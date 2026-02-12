@@ -142,7 +142,7 @@ fn configure_apps_with_optional_rmcp(
     rmcp_server_bin: Option<String>,
 ) {
     config.features.enable(Feature::Apps);
-    config.features.disable(Feature::AppsMcpGateway);
+    config.features.disable(Feature::ElicitationAppsGateway);
     config.chatgpt_base_url = apps_base_url.to_string();
     if let Some(command) = rmcp_server_bin {
         let mut servers = config.mcp_servers.get().clone();

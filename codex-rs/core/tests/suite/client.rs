@@ -688,7 +688,7 @@ async fn includes_apps_guidance_as_developer_message_when_enabled() {
         .with_auth(CodexAuth::from_api_key("Test API Key"))
         .with_config(move |config| {
             config.features.enable(Feature::Apps);
-            config.features.disable(Feature::AppsMcpGateway);
+            config.features.disable(Feature::ElicitationAppsGateway);
             config.chatgpt_base_url = apps_base_url;
         });
     let codex = builder

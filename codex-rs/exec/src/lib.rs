@@ -565,6 +565,7 @@ pub async fn run_main(cli: Cli, codex_linux_sandbox_exe: Option<PathBuf>) -> any
                     server_name: ev.server_name.clone(),
                     request_id: ev.id.clone(),
                     decision: ElicitationAction::Cancel,
+                    response_content: None,
                 })
                 .await?;
         }

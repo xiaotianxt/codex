@@ -2493,15 +2493,20 @@ impl App {
                 ApprovalRequest::McpElicitation {
                     server_name,
                     message,
+                    url,
                     ..
                 } => {
                     let _ = tui.enter_alt_screen();
-                    let paragraph = Paragraph::new(vec![
+                    let mut lines = vec![
                         Line::from(vec!["Server: ".into(), server_name.bold()]),
                         Line::from(""),
                         Line::from(message),
-                    ])
-                    .wrap(Wrap { trim: false });
+                    ];
+                    if let Some(url) = url {
+                        lines.push(Line::from(""));
+                        lines.push(Line::from(vec!["URL: ".into(), url.cyan()]));
+                    }
+                    let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
                     self.overlay = Some(Overlay::new_static_with_renderables(
                         vec![Box::new(paragraph)],
                         "E L I C I T A T I O N".to_string(),

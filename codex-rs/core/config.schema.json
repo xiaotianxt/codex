@@ -227,7 +227,7 @@
             "apps": {
               "type": "boolean"
             },
-            "apps_mcp_gateway": {
+            "elicitation_apps_mcp_gateway": {
               "type": "boolean"
             },
             "child_agents_md": {
@@ -1396,7 +1396,7 @@
         "apps": {
           "type": "boolean"
         },
-        "apps_mcp_gateway": {
+        "elicitation_apps_mcp_gateway": {
           "type": "boolean"
         },
         "child_agents_md": {

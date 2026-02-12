@@ -37,6 +37,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
+
 use crate::bottom_pane::StatusLineItem;
 use crate::bottom_pane::StatusLineSetupView;
 use crate::status::RateLimitWindowDisplay;
@@ -125,6 +126,7 @@ use codex_protocol::config_types::Settings;
 #[cfg(target_os = "windows")]
 use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_protocol::items::AgentMessageItem;
+use codex_protocol::mcp::RequestId;
 use codex_protocol::models::MessagePhase;
 use codex_protocol::models::local_image_label_text;
 use codex_protocol::parse_command::ParsedCommand;
@@ -146,6 +148,7 @@ use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Wrap;
+use serde_json;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::JoinHandle;
 use tracing::debug;
@@ -157,6 +160,7 @@ const PLAN_IMPLEMENTATION_YES: &str = "Yes, implement this plan";
 const PLAN_IMPLEMENTATION_NO: &str = "No, stay in Plan mode";
 const PLAN_IMPLEMENTATION_CODING_MESSAGE: &str = "Implement the plan.";
 const CONNECTORS_SELECTION_VIEW_ID: &str = "connectors-selection";
+const MCP_ELICITATION_DUMP_DIR: &str = "/tmp/codex-mcp-elicitations";
 
 use crate::app_event::AppEvent;
 use crate::app_event::ConnectorsSnapshot;
@@ -2423,15 +2427,31 @@ impl ChatWidget {
 
     pub(crate) fn handle_elicitation_request_now(&mut self, ev: ElicitationRequestEvent) {
         self.flush_answer_stream_with_separator();
+        let mcp_elicitations_enabled = self
+            .config
+            .features
+            .enabled(Feature::ElicitationAppsGateway);
 
         self.notify(Notification::ElicitationRequested {
             server_name: ev.server_name.clone(),
         });
 
+        let requested_schema = if mcp_elicitations_enabled {
+            ev.requested_schema
+        } else {
+            None
+        };
+        let url = if mcp_elicitations_enabled {
+            ev.url
+        } else {
+            None
+        };
         let request = ApprovalRequest::McpElicitation {
             server_name: ev.server_name,
             request_id: ev.id,
             message: ev.message,
+            requested_schema,
+            url,
         };
         self.bottom_pane
             .push_approval_request(request, &self.config.features);

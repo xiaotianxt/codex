@@ -125,8 +125,8 @@ pub enum Feature {
     Collab,
     /// Enable apps.
     Apps,
-    /// Route apps MCP calls through the configured gateway.
-    AppsMcpGateway,
+    /// Route apps MCP calls through the new gateway and enable elicitation flows.
+    ElicitationAppsGateway,
     /// Allow prompting and installing missing MCP dependencies.
     SkillMcpDependencyInstall,
     /// Prompt for missing skill env var dependencies.
@@ -588,8 +588,8 @@ pub const FEATURES: &[FeatureSpec] = &[
         default_enabled: false,
     },
     FeatureSpec {
-        id: Feature::AppsMcpGateway,
-        key: "apps_mcp_gateway",
+        id: Feature::ElicitationAppsGateway,
+        key: "elicitation_apps_mcp_gateway",
         stage: Stage::UnderDevelopment,
         default_enabled: false,
     },

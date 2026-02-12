@@ -106,6 +106,7 @@ pub async fn list_accessible_connectors_from_mcp_tools_with_options(
         auth_status_entries,
         &config.permissions.approval_policy,
         tx_event,
+        config.features.enabled(Feature::ElicitationAppsGateway),
         sandbox_state,
     )
     .await;

@@ -29,8 +29,22 @@ const MCP_TOOL_NAME_PREFIX: &str = "mcp";
 const MCP_TOOL_NAME_DELIMITER: &str = "__";
 pub(crate) const CODEX_APPS_MCP_SERVER_NAME: &str = "codex_apps";
 const CODEX_CONNECTORS_TOKEN_ENV_VAR: &str = "CODEX_CONNECTORS_TOKEN";
-const OPENAI_CONNECTORS_MCP_BASE_URL: &str = "https://api.openai.com";
-const OPENAI_CONNECTORS_MCP_PATH: &str = "/v1/connectors/mcp/";
+// Testing toggle: when true, include ChatGPT-Account-ID even when using CODEX_CONNECTORS_TOKEN.
+const INCLUDE_CHATGPT_ACCOUNT_ID_HEADER_WITH_CONNECTORS_TOKEN: bool = false;
+
+// Force elicitations - testing only, soon-to-be legacy endpoint
+//const OPENAI_CONNECTORS_MCP_URL: &str =
+//    "https://api.openai.com/v1/connectors/mcp/?debug_elicitation=REQUIRE_APPROVAL";
+
+// New flat endpoint w/ elicitations always on (for testing)
+//const OPENAI_CONNECTORS_MCP_URL: &str = "https://api.openai.com/v1/connectors/gateways/flat/?debug_elicitation=REQUIRE_APPROVAL";
+
+// New flat endpoint (future prod))
+const OPENAI_CONNECTORS_MCP_URL: &str = "https://api.openai.com/v1/connectors/gateways/flat/";
+
+// Old endpoint - current PROD, no elicitation forcing
+//const OPENAI_CONNECTORS_MCP_URL: &str =
+//    "https://api.openai.com/v1/connectors/mcp/";
 
 // Legacy vs new MCP gateway
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,12 +72,17 @@ fn codex_apps_mcp_bearer_token(auth: Option<&CodexAuth>) -> Option<String> {
     }
 }
 
-fn codex_apps_mcp_http_headers(auth: Option<&CodexAuth>) -> Option<HashMap<String, String>> {
+fn codex_apps_mcp_http_headers(
+    auth: Option<&CodexAuth>,
+    include_authorization_header: bool,
+    include_account_id_header: bool,
+) -> Option<HashMap<String, String>> {
     let mut headers = HashMap::new();
-    if let Some(token) = codex_apps_mcp_bearer_token(auth) {
+    if include_authorization_header && let Some(token) = codex_apps_mcp_bearer_token(auth) {
         headers.insert("Authorization".to_string(), format!("Bearer {token}"));
     }
-    if let Some(account_id) = auth.and_then(CodexAuth::get_account_id) {
+    if include_account_id_header && let Some(account_id) = auth.and_then(CodexAuth::get_account_id)
+    {
         headers.insert("ChatGPT-Account-ID".to_string(), account_id);
     }
     if headers.is_empty() {
@@ -74,7 +93,7 @@ fn codex_apps_mcp_http_headers(auth: Option<&CodexAuth>) -> Option<HashMap<Strin
 }
 
 fn selected_config_codex_apps_mcp_gateway(config: &Config) -> CodexAppsMcpGateway {
-    if config.features.enabled(Feature::AppsMcpGateway) {
+    if config.features.enabled(Feature::ElicitationAppsGateway) {
         CodexAppsMcpGateway::MCPGateway
     } else {
         CodexAppsMcpGateway::LegacyMCPGateway
@@ -94,7 +113,7 @@ fn normalize_codex_apps_base_url(base_url: &str) -> String {
 
 fn codex_apps_mcp_url_for_gateway(base_url: &str, gateway: CodexAppsMcpGateway) -> String {
     if gateway == CodexAppsMcpGateway::MCPGateway {
-        return format!("{OPENAI_CONNECTORS_MCP_BASE_URL}{OPENAI_CONNECTORS_MCP_PATH}");
+        return OPENAI_CONNECTORS_MCP_URL.to_string();
     }
 
     let base_url = normalize_codex_apps_base_url(base_url);
@@ -117,9 +136,13 @@ pub(crate) fn codex_apps_mcp_url(config: &Config) -> String {
 fn codex_apps_mcp_server_config(config: &Config, auth: Option<&CodexAuth>) -> McpServerConfig {
     let bearer_token_env_var = codex_apps_mcp_bearer_token_env_var();
     let http_headers = if bearer_token_env_var.is_some() {
-        None
+        codex_apps_mcp_http_headers(
+            auth,
+            false,
+            INCLUDE_CHATGPT_ACCOUNT_ID_HEADER_WITH_CONNECTORS_TOKEN,
+        )
     } else {
-        codex_apps_mcp_http_headers(auth)
+        codex_apps_mcp_http_headers(auth, true, true)
     };
     let url = codex_apps_mcp_url(config);
 
@@ -207,6 +230,7 @@ pub async fn collect_mcp_snapshot(config: &Config) -> McpListToolsResponseEvent 
         auth_status_entries.clone(),
         &config.permissions.approval_policy,
         tx_event,
+        config.features.enabled(Feature::ElicitationAppsGateway),
         sandbox_state,
     )
     .await;
@@ -420,28 +444,28 @@ mod tests {
         assert_eq!(
             codex_apps_mcp_url_for_gateway(
                 "https://chatgpt.com/backend-api",
-                CodexAppsMcpGateway::LegacyMCPGateway
+                CodexAppsMcpGateway::LegacyMCPGateway,
             ),
             "https://chatgpt.com/backend-api/wham/apps"
         );
         assert_eq!(
             codex_apps_mcp_url_for_gateway(
                 "https://chat.openai.com",
-                CodexAppsMcpGateway::LegacyMCPGateway
+                CodexAppsMcpGateway::LegacyMCPGateway,
             ),
             "https://chat.openai.com/backend-api/wham/apps"
         );
         assert_eq!(
             codex_apps_mcp_url_for_gateway(
                 "http://localhost:8080/api/codex",
-                CodexAppsMcpGateway::LegacyMCPGateway
+                CodexAppsMcpGateway::LegacyMCPGateway,
             ),
             "http://localhost:8080/api/codex/apps"
         );
         assert_eq!(
             codex_apps_mcp_url_for_gateway(
                 "http://localhost:8080",
-                CodexAppsMcpGateway::LegacyMCPGateway
+                CodexAppsMcpGateway::LegacyMCPGateway,
             ),
             "http://localhost:8080/api/codex/apps"
         );
@@ -449,35 +473,33 @@ mod tests {
 
     #[test]
     fn codex_apps_mcp_url_for_gateway_uses_openai_connectors_gateway() {
-        let expected_url = format!("{OPENAI_CONNECTORS_MCP_BASE_URL}{OPENAI_CONNECTORS_MCP_PATH}");
-
         assert_eq!(
             codex_apps_mcp_url_for_gateway(
                 "https://chatgpt.com/backend-api",
-                CodexAppsMcpGateway::MCPGateway
+                CodexAppsMcpGateway::MCPGateway,
             ),
-            expected_url.as_str()
+            OPENAI_CONNECTORS_MCP_URL
         );
         assert_eq!(
             codex_apps_mcp_url_for_gateway(
                 "https://chat.openai.com",
-                CodexAppsMcpGateway::MCPGateway
+                CodexAppsMcpGateway::MCPGateway,
             ),
-            expected_url.as_str()
+            OPENAI_CONNECTORS_MCP_URL
         );
         assert_eq!(
             codex_apps_mcp_url_for_gateway(
                 "http://localhost:8080/api/codex",
-                CodexAppsMcpGateway::MCPGateway
+                CodexAppsMcpGateway::MCPGateway,
             ),
-            expected_url.as_str()
+            OPENAI_CONNECTORS_MCP_URL
         );
         assert_eq!(
             codex_apps_mcp_url_for_gateway(
                 "http://localhost:8080",
-                CodexAppsMcpGateway::MCPGateway
+                CodexAppsMcpGateway::MCPGateway,
             ),
-            expected_url.as_str()
+            OPENAI_CONNECTORS_MCP_URL
         );
     }
 
@@ -496,12 +518,9 @@ mod tests {
     fn codex_apps_mcp_url_uses_openai_connectors_gateway_when_feature_is_enabled() {
         let mut config = crate::config::test_config();
         config.chatgpt_base_url = "https://chatgpt.com".to_string();
-        config.features.enable(Feature::AppsMcpGateway);
+        config.features.enable(Feature::ElicitationAppsGateway);
 
-        assert_eq!(
-            codex_apps_mcp_url(&config),
-            format!("{OPENAI_CONNECTORS_MCP_BASE_URL}{OPENAI_CONNECTORS_MCP_PATH}")
-        );
+        assert_eq!(codex_apps_mcp_url(&config), OPENAI_CONNECTORS_MCP_URL);
     }
 
     #[test]
@@ -525,7 +544,7 @@ mod tests {
 
         assert_eq!(url, "https://chatgpt.com/backend-api/wham/apps");
 
-        config.features.enable(Feature::AppsMcpGateway);
+        config.features.enable(Feature::ElicitationAppsGateway);
         servers = with_codex_apps_mcp(servers, true, None, &config);
         let server = servers
             .get(CODEX_APPS_MCP_SERVER_NAME)
@@ -535,7 +554,6 @@ mod tests {
             _ => panic!("expected streamable http transport for codex apps"),
         };
 
-        let expected_url = format!("{OPENAI_CONNECTORS_MCP_BASE_URL}{OPENAI_CONNECTORS_MCP_PATH}");
-        assert_eq!(url, &expected_url);
+        assert_eq!(url, OPENAI_CONNECTORS_MCP_URL);
     }
 }
