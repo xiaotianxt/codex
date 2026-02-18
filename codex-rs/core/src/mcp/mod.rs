@@ -129,10 +129,7 @@ pub(crate) fn codex_apps_mcp_url(config: &Config) -> String {
 fn codex_apps_mcp_server_config(config: &Config, auth: Option<&CodexAuth>) -> McpServerConfig {
     let bearer_token_env_var = codex_apps_mcp_bearer_token_env_var();
     let http_headers = if bearer_token_env_var.is_some() {
-        codex_apps_mcp_http_headers(
-            auth,
-            false,
-        )
+        codex_apps_mcp_http_headers(auth, false)
     } else {
         codex_apps_mcp_http_headers(auth, true)
     };
