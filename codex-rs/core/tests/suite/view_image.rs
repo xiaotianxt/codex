@@ -293,8 +293,6 @@ async fn view_image_tool_attaches_local_image() -> anyhow::Result<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn js_repl_view_image_tool_attaches_local_image() -> anyhow::Result<()> {
-    skip_if_no_network!(Ok(()));
-
     let server = start_mock_server().await;
     let mut builder = test_codex().with_config(|config| {
         config.features.enable(Feature::JsRepl);
@@ -364,12 +362,6 @@ console.log(out.output?.body?.text ?? "");
         .custom_tool_call_output_content_and_success(call_id)
         .expect("custom tool output present");
     let js_repl_output = js_repl_output.expect("custom tool output text present");
-    if js_repl_output.contains("Node runtime not found")
-        || js_repl_output.contains("Node runtime too old for js_repl")
-    {
-        eprintln!("Skipping js_repl image test: {js_repl_output}");
-        return Ok(());
-    }
     assert_ne!(
         js_repl_success,
         Some(false),

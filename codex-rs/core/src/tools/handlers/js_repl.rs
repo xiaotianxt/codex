@@ -288,10 +288,31 @@ mod tests {
     use std::time::Duration;
 
     use super::parse_freeform_args;
-    use crate::codex::make_session_and_context_with_rx;
     use crate::protocol::EventMsg;
     use crate::protocol::ExecCommandSource;
+    use crate::protocol::SandboxPolicy;
     use pretty_assertions::assert_eq;
+
+    fn configure_js_repl_test_sandbox(turn: &mut crate::codex::TurnContext) {
+        turn.sandbox_policy = SandboxPolicy::new_workspace_write_policy();
+        #[cfg(target_os = "linux")]
+        {
+            turn.codex_linux_sandbox_exe =
+                Some(std::env::current_exe().expect("test harness path should resolve on Linux"));
+        }
+    }
+
+    async fn make_session_and_context_with_rx() -> (
+        std::sync::Arc<crate::codex::Session>,
+        std::sync::Arc<crate::codex::TurnContext>,
+        async_channel::Receiver<crate::protocol::Event>,
+    ) {
+        let (session, mut turn, rx) = crate::codex::make_session_and_context_with_rx().await;
+        let turn_mut =
+            std::sync::Arc::get_mut(&mut turn).expect("turn context should be uniquely owned");
+        configure_js_repl_test_sandbox(turn_mut);
+        (session, turn, rx)
+    }
 
     #[test]
     fn parse_freeform_args_without_pragma() {
