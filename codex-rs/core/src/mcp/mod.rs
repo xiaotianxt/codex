@@ -78,6 +78,9 @@ fn codex_apps_mcp_http_headers(
     if include_authorization_header && let Some(token) = codex_apps_mcp_bearer_token(auth) {
         headers.insert("Authorization".to_string(), format!("Bearer {token}"));
     }
+    if let Some(account_id) = auth.and_then(CodexAuth::get_account_id) {
+        headers.insert("ChatGPT-Account-ID".to_string(), account_id);
+    }
     if headers.is_empty() {
         None
     } else {
