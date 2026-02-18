@@ -29,8 +29,6 @@ const MCP_TOOL_NAME_PREFIX: &str = "mcp";
 const MCP_TOOL_NAME_DELIMITER: &str = "__";
 pub(crate) const CODEX_APPS_MCP_SERVER_NAME: &str = "codex_apps";
 const CODEX_CONNECTORS_TOKEN_ENV_VAR: &str = "CODEX_CONNECTORS_TOKEN";
-// Testing toggle: when true, include ChatGPT-Account-ID even when using CODEX_CONNECTORS_TOKEN.
-const INCLUDE_CHATGPT_ACCOUNT_ID_HEADER_WITH_CONNECTORS_TOKEN: bool = false;
 
 // Force elicitations - testing only, soon-to-be legacy endpoint
 //const OPENAI_CONNECTORS_MCP_URL: &str =
@@ -75,15 +73,10 @@ fn codex_apps_mcp_bearer_token(auth: Option<&CodexAuth>) -> Option<String> {
 fn codex_apps_mcp_http_headers(
     auth: Option<&CodexAuth>,
     include_authorization_header: bool,
-    include_account_id_header: bool,
 ) -> Option<HashMap<String, String>> {
     let mut headers = HashMap::new();
     if include_authorization_header && let Some(token) = codex_apps_mcp_bearer_token(auth) {
         headers.insert("Authorization".to_string(), format!("Bearer {token}"));
-    }
-    if include_account_id_header && let Some(account_id) = auth.and_then(CodexAuth::get_account_id)
-    {
-        headers.insert("ChatGPT-Account-ID".to_string(), account_id);
     }
     if headers.is_empty() {
         None
@@ -139,10 +132,9 @@ fn codex_apps_mcp_server_config(config: &Config, auth: Option<&CodexAuth>) -> Mc
         codex_apps_mcp_http_headers(
             auth,
             false,
-            INCLUDE_CHATGPT_ACCOUNT_ID_HEADER_WITH_CONNECTORS_TOKEN,
         )
     } else {
-        codex_apps_mcp_http_headers(auth, true, true)
+        codex_apps_mcp_http_headers(auth, true)
     };
     let url = codex_apps_mcp_url(config);
 
