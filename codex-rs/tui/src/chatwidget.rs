@@ -25,17 +25,6 @@
 //! the final answer. During streaming we hide the status row to avoid duplicate
 //! progress indicators; once commentary completes and stream queues drain, we
 //! re-show it so users still see turn-in-progress state between output bursts.
-use std::collections::BTreeMap;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::collections::VecDeque;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::time::Duration;
-use std::time::Instant;
 use crate::bottom_pane::StatusLineItem;
 use crate::bottom_pane::StatusLineSetupView;
 use crate::status::RateLimitWindowDisplay;
@@ -145,6 +134,17 @@ use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Wrap;
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::collections::VecDeque;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
+use std::time::Instant;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::JoinHandle;
 use tracing::debug;
