@@ -35,6 +35,7 @@ use ratatui::text::Line;
 use ratatui::text::Span;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Wrap;
+use serde_json::Value;
 
 /// Request coming from the agent that needs user approval.
 #[derive(Clone, Debug)]
@@ -56,6 +57,8 @@ pub(crate) enum ApprovalRequest {
         server_name: String,
         request_id: RequestId,
         message: String,
+        requested_schema: Option<Value>,
+        url: Option<String>,
     },
 }
 
@@ -407,13 +410,19 @@ impl From<ApprovalRequest> for ApprovalRequestState {
                 server_name,
                 request_id,
                 message,
+                requested_schema: _,
+                url,
             } => {
-                let header = Paragraph::new(vec![
+                let mut lines = vec![
                     Line::from(vec!["Server: ".into(), server_name.clone().bold()]),
                     Line::from(""),
                     Line::from(message),
-                ])
-                .wrap(Wrap { trim: false });
+                ];
+                if let Some(url) = url {
+                    lines.push(Line::from(""));
+                    lines.push(Line::from(vec!["URL: ".into(), url.cyan()]));
+                }
+                let header = Paragraph::new(lines).wrap(Wrap { trim: false });
                 Self {
                     variant: ApprovalVariant::McpElicitation {
                         server_name,
