@@ -105,7 +105,7 @@ impl ApprovalOverlay {
     }
 
     fn set_current(&mut self, request: ApprovalRequest) {
-        let request = if self.features.enabled(Feature::ElicitationAppsGateway) {
+        let request = if self.features.enabled(Feature::AppsMcpGateway) {
             request
         } else {
             match request {
@@ -140,7 +140,7 @@ impl ApprovalOverlay {
         app_event_tx: &AppEventSender,
         features: &Features,
     ) -> Option<ElicitationFormState> {
-        if !features.enabled(Feature::ElicitationAppsGateway) {
+        if !features.enabled(Feature::AppsMcpGateway) {
             return None;
         }
         let ApprovalRequest::McpElicitation {
@@ -255,7 +255,7 @@ impl ApprovalOverlay {
                     ApprovalDecision::McpElicitation(decision),
                 ) => {
                     let mcp_elicitations_enabled =
-                        self.features.enabled(Feature::ElicitationAppsGateway);
+                        self.features.enabled(Feature::AppsMcpGateway);
                     if mcp_elicitations_enabled
                         && matches!(decision, ElicitationAction::Accept)
                         && !self.ensure_elicitation_required_fields_ready()
@@ -1077,7 +1077,7 @@ mod tests {
 
     fn mcp_elicitations_features() -> Features {
         let mut features = Features::with_defaults();
-        features.enable(Feature::ElicitationAppsGateway);
+        features.enable(Feature::AppsMcpGateway);
         features
     }
 

@@ -2425,7 +2425,7 @@ impl ChatWidget {
         let mcp_elicitations_enabled = self
             .config
             .features
-            .enabled(Feature::ElicitationAppsGateway);
+            .enabled(Feature::AppsMcpGateway);
 
         self.notify(Notification::ElicitationRequested {
             server_name: ev.server_name.clone(),

@@ -1290,7 +1290,7 @@ impl Session {
             // setup is straightforward enough and performs well.
             mcp_connection_manager: Arc::new(RwLock::new(McpConnectionManager::new_uninitialized(
                 &config.permissions.approval_policy,
-                config.features.enabled(Feature::ElicitationAppsGateway),
+                config.features.enabled(Feature::AppsMcpGateway),
             ))),
             mcp_startup_cancellation_token: Mutex::new(CancellationToken::new()),
             unified_exec_manager: UnifiedExecProcessManager::new(
@@ -1420,7 +1420,7 @@ impl Session {
             auth_statuses.clone(),
             &session_configuration.approval_policy,
             tx_event.clone(),
-            config.features.enabled(Feature::ElicitationAppsGateway),
+            config.features.enabled(Feature::AppsMcpGateway),
             sandbox_state,
         )
         .await;
@@ -3071,7 +3071,7 @@ impl Session {
             self.get_tx_event(),
             turn_context
                 .features
-                .enabled(Feature::ElicitationAppsGateway),
+                .enabled(Feature::AppsMcpGateway),
             sandbox_state,
         )
         .await;

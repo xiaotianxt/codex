@@ -77,7 +77,7 @@ fn codex_apps_mcp_http_headers(
 }
 
 fn selected_config_codex_apps_mcp_gateway(config: &Config) -> CodexAppsMcpGateway {
-    if config.features.enabled(Feature::ElicitationAppsGateway) {
+    if config.features.enabled(Feature::AppsMcpGateway) {
         CodexAppsMcpGateway::MCPGateway
     } else {
         CodexAppsMcpGateway::LegacyMCPGateway
@@ -210,7 +210,7 @@ pub async fn collect_mcp_snapshot(config: &Config) -> McpListToolsResponseEvent 
         auth_status_entries.clone(),
         &config.permissions.approval_policy,
         tx_event,
-        config.features.enabled(Feature::ElicitationAppsGateway),
+        config.features.enabled(Feature::AppsMcpGateway),
         sandbox_state,
     )
     .await;
@@ -498,7 +498,7 @@ mod tests {
     fn codex_apps_mcp_url_uses_openai_connectors_gateway_when_feature_is_enabled() {
         let mut config = crate::config::test_config();
         config.chatgpt_base_url = "https://chatgpt.com".to_string();
-        config.features.enable(Feature::ElicitationAppsGateway);
+        config.features.enable(Feature::AppsMcpGateway);
 
         assert_eq!(codex_apps_mcp_url(&config), OPENAI_CONNECTORS_MCP_URL);
     }
@@ -524,7 +524,7 @@ mod tests {
 
         assert_eq!(url, "https://chatgpt.com/backend-api/wham/apps");
 
-        config.features.enable(Feature::ElicitationAppsGateway);
+        config.features.enable(Feature::AppsMcpGateway);
         servers = with_codex_apps_mcp(servers, true, None, &config);
         let server = servers
             .get(CODEX_APPS_MCP_SERVER_NAME)
