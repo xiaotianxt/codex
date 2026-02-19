@@ -300,7 +300,7 @@ async fn maybe_request_mcp_tool_approval(
     if server != CODEX_APPS_MCP_SERVER_NAME {
         return None;
     }
-    if is_apps_mcp_gateway_elicitation_flow_active(sess.config.as_ref(), server) {
+    if is_apps_mcp_gateway_elicitation_flow_active(turn_context.config.as_ref(), server) {
         return None;
     }
 
