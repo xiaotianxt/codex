@@ -442,10 +442,8 @@ impl McpConnectionManager {
         let cancel_token = CancellationToken::new();
         let mut clients = HashMap::new();
         let mut join_set = JoinSet::new();
-        let elicitation_requests = ElicitationRequestManager::new(
-            approval_policy.value(),
-            mcp_elicitations_enabled,
-        );
+        let elicitation_requests =
+            ElicitationRequestManager::new(approval_policy.value(), mcp_elicitations_enabled);
         let mcp_servers = mcp_servers.clone();
         for (server_name, cfg) in mcp_servers.into_iter().filter(|(_, cfg)| cfg.enabled) {
             let cancel_token = cancel_token.child_token();

@@ -3146,9 +3146,7 @@ impl Session {
             auth_statuses,
             &turn_context.config.permissions.approval_policy,
             self.get_tx_event(),
-            turn_context
-                .features
-                .enabled(Feature::AppsMcpGateway),
+            turn_context.features.enabled(Feature::AppsMcpGateway),
             sandbox_state,
         )
         .await;
