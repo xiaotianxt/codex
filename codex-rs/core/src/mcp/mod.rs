@@ -29,24 +29,16 @@ use crate::mcp_connection_manager::SandboxState;
 
 const MCP_TOOL_NAME_PREFIX: &str = "mcp";
 const MCP_TOOL_NAME_DELIMITER: &str = "__";
-pub(crate) const CODEX_APPS_MCP_SERVER_NAME: &str = "codex_apps"; //revisit
+pub(crate) const CODEX_APPS_MCP_SERVER_NAME: &str = "codex_apps";
 const CODEX_CONNECTORS_TOKEN_ENV_VAR: &str = "CODEX_CONNECTORS_TOKEN";
 
 // Prod URL
-//const OPENAI_CONNECTORS_MCP_URL: &str = "https://api.openai.com/v1/connectors/gateways/flat/";
+const OPENAI_CONNECTORS_MCP_URL: &str = "https://api.openai.com/v1/connectors/gateways/flat/";
 
 // For debugging with forced elicitation
-const OPENAI_CONNECTORS_MCP_URL: &str =
-    "https://api.openai.com/v1/connectors/gateways/flat/?debug_elicitation=REQUIRE_APPROVAL";
+//const OPENAI_CONNECTORS_MCP_URL: &str = "https://api.openai.com/v1/connectors/gateways/flat/?debug_elicitation=REQUIRE_APPROVAL";
 
 pub(crate) fn is_apps_mcp_gateway_elicitation_flow_active(
-    config: &Config,
-    server_name: &str,
-) -> bool {
-    is_apps_mcp_gateway_elicitation_flow_active_for_features(&config.features, server_name)
-}
-
-pub(crate) fn is_apps_mcp_gateway_elicitation_flow_active_for_features(
     features: &Features,
     server_name: &str,
 ) -> bool {
@@ -79,12 +71,9 @@ fn codex_apps_mcp_bearer_token(auth: Option<&CodexAuth>) -> Option<String> {
     }
 }
 
-fn codex_apps_mcp_http_headers(
-    auth: Option<&CodexAuth>,
-    include_authorization_header: bool,
-) -> Option<HashMap<String, String>> {
+fn codex_apps_mcp_http_headers(auth: Option<&CodexAuth>) -> Option<HashMap<String, String>> {
     let mut headers = HashMap::new();
-    if include_authorization_header && let Some(token) = codex_apps_mcp_bearer_token(auth) {
+    if let Some(token) = codex_apps_mcp_bearer_token(auth) {
         headers.insert("Authorization".to_string(), format!("Bearer {token}"));
     }
     if let Some(account_id) = auth.and_then(CodexAuth::get_account_id) {
@@ -141,9 +130,9 @@ pub(crate) fn codex_apps_mcp_url(config: &Config) -> String {
 fn codex_apps_mcp_server_config(config: &Config, auth: Option<&CodexAuth>) -> McpServerConfig {
     let bearer_token_env_var = codex_apps_mcp_bearer_token_env_var();
     let http_headers = if bearer_token_env_var.is_some() {
-        codex_apps_mcp_http_headers(auth, false)
+        None
     } else {
-        codex_apps_mcp_http_headers(auth, true)
+        codex_apps_mcp_http_headers(auth)
     };
     let url = codex_apps_mcp_url(config);
 
@@ -445,28 +434,28 @@ mod tests {
         assert_eq!(
             codex_apps_mcp_url_for_gateway(
                 "https://chatgpt.com/backend-api",
-                CodexAppsMcpGateway::LegacyMCPGateway,
+                CodexAppsMcpGateway::LegacyMCPGateway
             ),
             "https://chatgpt.com/backend-api/wham/apps"
         );
         assert_eq!(
             codex_apps_mcp_url_for_gateway(
                 "https://chat.openai.com",
-                CodexAppsMcpGateway::LegacyMCPGateway,
+                CodexAppsMcpGateway::LegacyMCPGateway
             ),
             "https://chat.openai.com/backend-api/wham/apps"
         );
         assert_eq!(
             codex_apps_mcp_url_for_gateway(
                 "http://localhost:8080/api/codex",
-                CodexAppsMcpGateway::LegacyMCPGateway,
+                CodexAppsMcpGateway::LegacyMCPGateway
             ),
             "http://localhost:8080/api/codex/apps"
         );
         assert_eq!(
             codex_apps_mcp_url_for_gateway(
                 "http://localhost:8080",
-                CodexAppsMcpGateway::LegacyMCPGateway,
+                CodexAppsMcpGateway::LegacyMCPGateway
             ),
             "http://localhost:8080/api/codex/apps"
         );
@@ -477,28 +466,28 @@ mod tests {
         assert_eq!(
             codex_apps_mcp_url_for_gateway(
                 "https://chatgpt.com/backend-api",
-                CodexAppsMcpGateway::MCPGateway,
+                CodexAppsMcpGateway::MCPGateway
             ),
             OPENAI_CONNECTORS_MCP_URL
         );
         assert_eq!(
             codex_apps_mcp_url_for_gateway(
                 "https://chat.openai.com",
-                CodexAppsMcpGateway::MCPGateway,
+                CodexAppsMcpGateway::MCPGateway
             ),
             OPENAI_CONNECTORS_MCP_URL
         );
         assert_eq!(
             codex_apps_mcp_url_for_gateway(
                 "http://localhost:8080/api/codex",
-                CodexAppsMcpGateway::MCPGateway,
+                CodexAppsMcpGateway::MCPGateway
             ),
             OPENAI_CONNECTORS_MCP_URL
         );
         assert_eq!(
             codex_apps_mcp_url_for_gateway(
                 "http://localhost:8080",
-                CodexAppsMcpGateway::MCPGateway,
+                CodexAppsMcpGateway::MCPGateway
             ),
             OPENAI_CONNECTORS_MCP_URL
         );

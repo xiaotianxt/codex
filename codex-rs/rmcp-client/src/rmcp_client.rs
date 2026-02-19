@@ -9,15 +9,10 @@ use std::time::Duration;
 use anyhow::Result;
 use anyhow::anyhow;
 use futures::FutureExt;
-use futures::StreamExt;
 use futures::future::BoxFuture;
-use futures::stream::BoxStream;
 use oauth2::TokenResponse;
-use reqwest::header::ACCEPT;
 use reqwest::header::AUTHORIZATION;
-use reqwest::header::CONTENT_TYPE;
 use reqwest::header::HeaderMap;
-use reqwest::header::WWW_AUTHENTICATE;
 use rmcp::model::CallToolRequestParams;
 use rmcp::model::CallToolResult;
 use rmcp::model::ClientNotification;
@@ -46,19 +41,8 @@ use rmcp::transport::auth::AuthClient;
 use rmcp::transport::auth::AuthError;
 use rmcp::transport::auth::OAuthState;
 use rmcp::transport::child_process::TokioChildProcess;
-use rmcp::transport::common::http_header::EVENT_STREAM_MIME_TYPE;
-use rmcp::transport::common::http_header::HEADER_LAST_EVENT_ID;
-use rmcp::transport::common::http_header::HEADER_SESSION_ID;
-use rmcp::transport::common::http_header::JSON_MIME_TYPE;
-use rmcp::transport::streamable_http_client::AuthRequiredError;
-use rmcp::transport::streamable_http_client::StreamableHttpClient;
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
-use rmcp::transport::streamable_http_client::StreamableHttpError;
-use rmcp::transport::streamable_http_client::StreamableHttpPostResponse;
 use serde_json::Value;
-use sse_stream::Error as SseError;
-use sse_stream::Sse;
-use sse_stream::SseStream;
 use tokio::io::AsyncBufReadExt;
 use tokio::io::BufReader;
 use tokio::process::Command;
@@ -84,172 +68,12 @@ enum PendingTransport {
         process_group_guard: Option<ProcessGroupGuard>,
     },
     StreamableHttp {
-        transport: StreamableHttpClientTransport<StreamableHttpResponseClient>,
+        transport: StreamableHttpClientTransport<reqwest::Client>,
     },
     StreamableHttpWithOAuth {
-        transport: StreamableHttpClientTransport<AuthClient<StreamableHttpResponseClient>>,
+        transport: StreamableHttpClientTransport<AuthClient<reqwest::Client>>,
         oauth_persistor: OAuthPersistor,
     },
-}
-
-#[derive(Clone)]
-struct StreamableHttpResponseClient {
-    inner: reqwest::Client,
-}
-
-const NON_JSON_RESPONSE_BODY_PREVIEW_BYTES: usize = 8_192;
-
-impl StreamableHttpResponseClient {
-    fn new(inner: reqwest::Client) -> Self {
-        Self { inner }
-    }
-}
-
-impl StreamableHttpClient for StreamableHttpResponseClient {
-    type Error = reqwest::Error;
-
-    async fn post_message(
-        &self,
-        uri: std::sync::Arc<str>,
-        message: rmcp::model::ClientJsonRpcMessage,
-        session_id: Option<std::sync::Arc<str>>,
-        auth_token: Option<String>,
-    ) -> Result<StreamableHttpPostResponse, StreamableHttpError<Self::Error>> {
-        let mut request = self
-            .inner
-            .post(uri.as_ref())
-            .header(ACCEPT, [EVENT_STREAM_MIME_TYPE, JSON_MIME_TYPE].join(", "));
-        if let Some(auth_header) = auth_token {
-            request = request.bearer_auth(auth_header);
-        }
-        if let Some(session_id) = session_id {
-            request = request.header(HEADER_SESSION_ID, session_id.as_ref());
-        }
-
-        let response = request.json(&message).send().await?;
-        if response.status() == reqwest::StatusCode::UNAUTHORIZED
-            && let Some(header) = response.headers().get(WWW_AUTHENTICATE)
-        {
-            let header = header
-                .to_str()
-                .map_err(|_| {
-                    StreamableHttpError::UnexpectedServerResponse(
-                        "invalid www-authenticate header value".into(),
-                    )
-                })?
-                .to_string();
-            return Err(StreamableHttpError::AuthRequired(AuthRequiredError {
-                www_authenticate_header: header,
-            }));
-        }
-
-        let status = response.status();
-        if matches!(
-            status,
-            reqwest::StatusCode::ACCEPTED | reqwest::StatusCode::NO_CONTENT
-        ) {
-            return Ok(StreamableHttpPostResponse::Accepted);
-        }
-
-        let content_type = response
-            .headers()
-            .get(CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_string);
-        let session_id = response
-            .headers()
-            .get(HEADER_SESSION_ID)
-            .and_then(|v| v.to_str().ok())
-            .map(ToString::to_string);
-
-        match content_type.as_ref() {
-            Some(ct) if ct.as_bytes().starts_with(EVENT_STREAM_MIME_TYPE.as_bytes()) => {
-                let event_stream = SseStream::from_byte_stream(response.bytes_stream()).boxed();
-                Ok(StreamableHttpPostResponse::Sse(event_stream, session_id))
-            }
-            Some(ct) if ct.as_bytes().starts_with(JSON_MIME_TYPE.as_bytes()) => {
-                let message: rmcp::model::ServerJsonRpcMessage = response.json().await?;
-                Ok(StreamableHttpPostResponse::Json(message, session_id))
-            }
-            None | Some(_) => {
-                let body = response.text().await?;
-                let mut body_preview = body;
-                let body_len = body_preview.len();
-                if body_len > NON_JSON_RESPONSE_BODY_PREVIEW_BYTES {
-                    let mut boundary = NON_JSON_RESPONSE_BODY_PREVIEW_BYTES;
-                    while !body_preview.is_char_boundary(boundary) {
-                        boundary = boundary.saturating_sub(1);
-                    }
-                    body_preview.truncate(boundary);
-                    body_preview.push_str(&format!(
-                        "... (truncated {} bytes)",
-                        body_len.saturating_sub(boundary)
-                    ));
-                }
-
-                let content_type = content_type.as_deref().unwrap_or("missing-content-type");
-                let content_type = format!("{content_type}; body: {body_preview}");
-                Err(StreamableHttpError::UnexpectedContentType(Some(
-                    content_type,
-                )))
-            }
-        }
-    }
-
-    async fn delete_session(
-        &self,
-        uri: std::sync::Arc<str>,
-        session: std::sync::Arc<str>,
-        auth_token: Option<String>,
-    ) -> Result<(), StreamableHttpError<Self::Error>> {
-        <reqwest::Client as StreamableHttpClient>::delete_session(
-            &self.inner,
-            uri,
-            session,
-            auth_token,
-        )
-        .await
-    }
-
-    async fn get_stream(
-        &self,
-        uri: std::sync::Arc<str>,
-        _session_id: std::sync::Arc<str>,
-        last_event_id: Option<String>,
-        auth_token: Option<String>,
-    ) -> Result<BoxStream<'static, Result<Sse, SseError>>, StreamableHttpError<Self::Error>> {
-        let mut request_builder = self
-            .inner
-            .get(uri.as_ref())
-            .header(ACCEPT, [EVENT_STREAM_MIME_TYPE, JSON_MIME_TYPE].join(", "));
-        if let Some(last_event_id) = last_event_id {
-            request_builder = request_builder.header(HEADER_LAST_EVENT_ID, last_event_id);
-        }
-        if let Some(auth_header) = auth_token {
-            request_builder = request_builder.bearer_auth(auth_header);
-        }
-        let response = request_builder.send().await?;
-        if response.status() == reqwest::StatusCode::METHOD_NOT_ALLOWED {
-            return Err(StreamableHttpError::ServerDoesNotSupportSse);
-        }
-        let response = response.error_for_status()?;
-        match response.headers().get(reqwest::header::CONTENT_TYPE) {
-            Some(ct) => {
-                if !ct.as_bytes().starts_with(EVENT_STREAM_MIME_TYPE.as_bytes())
-                    && !ct.as_bytes().starts_with(JSON_MIME_TYPE.as_bytes())
-                {
-                    return Err(StreamableHttpError::UnexpectedContentType(Some(
-                        String::from_utf8_lossy(ct.as_bytes()).to_string(),
-                    )));
-                }
-            }
-            None => {
-                return Err(StreamableHttpError::UnexpectedContentType(None));
-            }
-        }
-        let event_stream = SseStream::from_byte_stream(response.bytes_stream()).boxed();
-        Ok(event_stream)
-    }
 }
 
 enum ClientState {
@@ -468,7 +292,6 @@ impl RmcpClient {
                     let http_client =
                         apply_default_headers(reqwest::Client::builder(), &default_headers)
                             .build()?;
-                    let http_client = StreamableHttpResponseClient::new(http_client);
                     let transport =
                         StreamableHttpClientTransport::with_client(http_client, http_config);
                     PendingTransport::StreamableHttp { transport }
@@ -483,7 +306,6 @@ impl RmcpClient {
 
             let http_client =
                 apply_default_headers(reqwest::Client::builder(), &default_headers).build()?;
-            let http_client = StreamableHttpResponseClient::new(http_client);
 
             let transport = StreamableHttpClientTransport::with_client(http_client, http_config);
             PendingTransport::StreamableHttp { transport }
@@ -768,7 +590,7 @@ async fn create_oauth_transport_and_runtime(
     credentials_store: OAuthCredentialsStoreMode,
     default_headers: HeaderMap,
 ) -> Result<(
-    StreamableHttpClientTransport<AuthClient<StreamableHttpResponseClient>>,
+    StreamableHttpClientTransport<AuthClient<reqwest::Client>>,
     OAuthPersistor,
 )> {
     let http_client =
@@ -790,7 +612,7 @@ async fn create_oauth_transport_and_runtime(
         }
     };
 
-    let auth_client = AuthClient::new(StreamableHttpResponseClient::new(http_client), manager);
+    let auth_client = AuthClient::new(http_client, manager);
     let auth_manager = auth_client.auth_manager.clone();
 
     let transport = StreamableHttpClientTransport::with_client(

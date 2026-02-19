@@ -223,7 +223,7 @@ impl FieldSpec {
                 constraints.push("Choose Yes or No below.".to_string());
             }
             FieldKind::SingleSelectEnum { .. } => {
-                constraints.push("Choose one option below.".to_string());
+                constraints.push("Choose from one option below.".to_string());
             }
             FieldKind::MultiSelectEnum {
                 choices,

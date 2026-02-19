@@ -31,7 +31,7 @@ use crate::token_data::TokenData;
 pub const CONNECTORS_CACHE_TTL: Duration = Duration::from_secs(3600);
 
 fn codex_apps_mcp_elicitations_enabled(config: &Config) -> bool {
-    is_apps_mcp_gateway_elicitation_flow_active(config, CODEX_APPS_MCP_SERVER_NAME)
+    is_apps_mcp_gateway_elicitation_flow_active(&config.features, CODEX_APPS_MCP_SERVER_NAME)
 }
 
 #[derive(Clone, PartialEq, Eq)]
