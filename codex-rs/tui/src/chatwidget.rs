@@ -2422,10 +2422,7 @@ impl ChatWidget {
 
     pub(crate) fn handle_elicitation_request_now(&mut self, ev: ElicitationRequestEvent) {
         self.flush_answer_stream_with_separator();
-        let mcp_elicitations_enabled = self
-            .config
-            .features
-            .enabled(Feature::AppsMcpGateway);
+        let mcp_elicitations_enabled = self.config.features.enabled(Feature::AppsMcpGateway);
 
         self.notify(Notification::ElicitationRequested {
             server_name: ev.server_name.clone(),

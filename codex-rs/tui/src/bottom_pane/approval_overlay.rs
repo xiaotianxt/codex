@@ -254,8 +254,7 @@ impl ApprovalOverlay {
                     },
                     ApprovalDecision::McpElicitation(decision),
                 ) => {
-                    let mcp_elicitations_enabled =
-                        self.features.enabled(Feature::AppsMcpGateway);
+                    let mcp_elicitations_enabled = self.features.enabled(Feature::AppsMcpGateway);
                     if mcp_elicitations_enabled
                         && matches!(decision, ElicitationAction::Accept)
                         && !self.ensure_elicitation_required_fields_ready()
