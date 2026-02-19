@@ -7,9 +7,10 @@ use codex_protocol::request_user_input::RequestUserInputQuestionOption;
 use codex_protocol::request_user_input::RequestUserInputResponse;
 use codex_rmcp_client::ElicitationAction;
 use codex_rmcp_client::ElicitationResponse;
-use serde_json::Value;
 
 use crate::function_tool::FunctionCallError;
+use crate::mcp::elicitation_form::build_elicitation_content_from_response;
+use crate::mcp::elicitation_form::build_elicitation_content_questions;
 use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolOutput;
 use crate::tools::context::ToolPayload;
@@ -21,7 +22,6 @@ use codex_protocol::config_types::TUI_VISIBLE_COLLABORATION_MODES;
 use codex_protocol::request_user_input::RequestUserInputArgs;
 
 const MCP_ELICITATION_DECISION_QUESTION_ID: &str = "mcp_elicitation_decision";
-const MCP_ELICITATION_CONTENT_QUESTION_ID: &str = "mcp_elicitation_content";
 const MCP_ELICITATION_ACCEPT: &str = "Accept";
 const MCP_ELICITATION_DECLINE: &str = "Decline";
 const MCP_ELICITATION_CANCEL: &str = "Cancel";
@@ -89,17 +89,9 @@ pub(crate) fn build_mcp_elicitation_request_user_input_args(
         ]),
     }];
 
-    if elicitation.requested_schema.is_some() {
-        questions.push(RequestUserInputQuestion {
-            id: MCP_ELICITATION_CONTENT_QUESTION_ID.to_string(),
-            header: "Elicitation payload".to_string(),
-            question: "Optional: provide a JSON object to include in the elicitation response."
-                .to_string(),
-            is_other: false,
-            is_secret: false,
-            options: None,
-        });
-    }
+    questions.extend(build_elicitation_content_questions(
+        elicitation.requested_schema.as_ref(),
+    ));
 
     RequestUserInputArgs { questions }
 }
@@ -124,7 +116,10 @@ pub(crate) fn build_mcp_elicitation_response_from_user_input(
     match action {
         ElicitationAction::Accept => {
             let content = if elicitation.requested_schema.is_some() {
-                match parse_elicitation_content_from_user_input(&response) {
+                match build_elicitation_content_from_response(
+                    &response,
+                    elicitation.requested_schema.as_ref(),
+                ) {
                     Ok(Some(value)) => Some(value),
                     Ok(None) => Some(serde_json::json!({})),
                     Err(()) => {
@@ -159,37 +154,6 @@ fn request_user_input_answer_to_elicitation_action(
             MCP_ELICITATION_CANCEL => Some(ElicitationAction::Cancel),
             _ => None,
         }
-    })
-}
-
-fn parse_elicitation_content_from_user_input(
-    response: &RequestUserInputResponse,
-) -> Result<Option<Value>, ()> {
-    let note = response
-        .answers
-        .get(MCP_ELICITATION_CONTENT_QUESTION_ID)
-        .and_then(request_user_input_note)
-        .or_else(|| {
-            response
-                .answers
-                .get(MCP_ELICITATION_DECISION_QUESTION_ID)
-                .and_then(request_user_input_note)
-        });
-
-    let Some(note) = note else {
-        return Ok(None);
-    };
-
-    serde_json::from_str::<Value>(note)
-        .map(Some)
-        .map_err(|_| ())
-}
-
-fn request_user_input_note(answer: &RequestUserInputAnswer) -> Option<&str> {
-    answer.answers.iter().find_map(|entry| {
-        let note = entry.strip_prefix(REQUEST_USER_INPUT_NOTE_PREFIX)?;
-        let note = note.trim();
-        if note.is_empty() { None } else { Some(note) }
     })
 }
 

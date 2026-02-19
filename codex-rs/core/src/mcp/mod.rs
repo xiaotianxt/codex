@@ -1,4 +1,5 @@
 pub mod auth;
+pub(crate) mod elicitation_form;
 mod skill_dependencies;
 pub(crate) use skill_dependencies::maybe_prompt_and_install_mcp_dependencies;
 
@@ -32,10 +33,10 @@ pub(crate) const CODEX_APPS_MCP_SERVER_NAME: &str = "codex_apps"; //revisit
 const CODEX_CONNECTORS_TOKEN_ENV_VAR: &str = "CODEX_CONNECTORS_TOKEN";
 
 // Prod URL
-const OPENAI_CONNECTORS_MCP_URL: &str = "https://api.openai.com/v1/connectors/gateways/flat/";
+//const OPENAI_CONNECTORS_MCP_URL: &str = "https://api.openai.com/v1/connectors/gateways/flat/";
 
 // For debugging with forced elicitation
-//const OPENAI_CONNECTORS_MCP_URL: &str = "https://api.openai.com/v1/connectors/gateways/flat/?debug_elicitation=REQUIRE_APPROVAL";
+const OPENAI_CONNECTORS_MCP_URL: &str = "https://api.openai.com/v1/connectors/gateways/flat/?debug_elicitation=REQUIRE_APPROVAL";
 
 pub(crate) fn is_apps_mcp_gateway_elicitation_flow_active(
     config: &Config,

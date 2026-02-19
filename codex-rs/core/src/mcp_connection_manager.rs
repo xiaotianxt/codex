@@ -1155,8 +1155,8 @@ async fn start_server_task(
         startup_timeout,
         elicitation_requests.mcp_elicitations_enabled,
     )
-        .await
-        .map_err(StartupOutcomeError::from)?;
+    .await
+    .map_err(StartupOutcomeError::from)?;
 
     let server_supports_sandbox_state_capability = initialize_result
         .capabilities
@@ -1254,13 +1254,9 @@ async fn list_tools_for_client(
     }
 
     let fetch_start = Instant::now();
-    let tools = list_tools_for_client_uncached(
-        server_name,
-        client,
-        timeout,
-        mcp_elicitations_enabled,
-    )
-    .await?;
+    let tools =
+        list_tools_for_client_uncached(server_name, client, timeout, mcp_elicitations_enabled)
+            .await?;
     emit_duration(
         MCP_TOOLS_FETCH_UNCACHED_DURATION_METRIC,
         fetch_start.elapsed(),
