@@ -22,6 +22,7 @@ use crate::config::types::AppsConfigToml;
 use crate::features::Feature;
 use crate::mcp::CODEX_APPS_MCP_SERVER_NAME;
 use crate::mcp::auth::compute_auth_statuses;
+use crate::mcp::is_apps_mcp_gateway_elicitation_flow_active;
 use crate::mcp::with_codex_apps_mcp;
 use crate::mcp_connection_manager::DEFAULT_STARTUP_TIMEOUT;
 use crate::mcp_connection_manager::McpConnectionManager;
@@ -30,7 +31,7 @@ use crate::token_data::TokenData;
 pub const CONNECTORS_CACHE_TTL: Duration = Duration::from_secs(3600);
 
 fn codex_apps_mcp_elicitations_enabled(config: &Config) -> bool {
-    config.features.enabled(Feature::AppsMcpGateway)
+    is_apps_mcp_gateway_elicitation_flow_active(config, CODEX_APPS_MCP_SERVER_NAME)
 }
 
 #[derive(Clone, PartialEq, Eq)]

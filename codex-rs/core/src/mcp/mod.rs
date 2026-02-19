@@ -21,6 +21,7 @@ use crate::config::Config;
 use crate::config::types::McpServerConfig;
 use crate::config::types::McpServerTransportConfig;
 use crate::features::Feature;
+use crate::features::Features;
 use crate::mcp::auth::compute_auth_statuses;
 use crate::mcp_connection_manager::McpConnectionManager;
 use crate::mcp_connection_manager::SandboxState;
@@ -30,13 +31,24 @@ const MCP_TOOL_NAME_DELIMITER: &str = "__";
 pub(crate) const CODEX_APPS_MCP_SERVER_NAME: &str = "codex_apps"; //revisit
 const CODEX_CONNECTORS_TOKEN_ENV_VAR: &str = "CODEX_CONNECTORS_TOKEN";
 
+// Prod URL
 const OPENAI_CONNECTORS_MCP_URL: &str = "https://api.openai.com/v1/connectors/gateways/flat/";
+
+// For debugging with forced elicitation
+//const OPENAI_CONNECTORS_MCP_URL: &str = "https://api.openai.com/v1/connectors/gateways/flat/?debug_elicitation=REQUIRE_APPROVAL";
 
 pub(crate) fn is_apps_mcp_gateway_elicitation_flow_active(
     config: &Config,
     server_name: &str,
 ) -> bool {
-    config.features.enabled(Feature::AppsMcpGateway) && server_name == CODEX_APPS_MCP_SERVER_NAME
+    is_apps_mcp_gateway_elicitation_flow_active_for_features(&config.features, server_name)
+}
+
+pub(crate) fn is_apps_mcp_gateway_elicitation_flow_active_for_features(
+    features: &Features,
+    server_name: &str,
+) -> bool {
+    features.enabled(Feature::AppsMcpGateway) && server_name == CODEX_APPS_MCP_SERVER_NAME
 }
 
 // Legacy vs new MCP gateway

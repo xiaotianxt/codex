@@ -148,6 +148,7 @@ use crate::instructions::UserInstructions;
 use crate::mcp::CODEX_APPS_MCP_SERVER_NAME;
 use crate::mcp::auth::compute_auth_statuses;
 use crate::mcp::effective_mcp_servers;
+use crate::mcp::is_apps_mcp_gateway_elicitation_flow_active_for_features;
 use crate::mcp::maybe_prompt_and_install_mcp_dependencies;
 use crate::mcp::with_codex_apps_mcp;
 use crate::mcp_connection_manager::McpConnectionManager;
@@ -923,8 +924,10 @@ impl Session {
                     break;
                 };
                 if let EventMsg::ElicitationRequest(elicitation) = &event.msg
-                    && sess.features.enabled(Feature::AppsMcpGateway)
-                    && elicitation.server_name == CODEX_APPS_MCP_SERVER_NAME
+                    && is_apps_mcp_gateway_elicitation_flow_active_for_features(
+                        &sess.features,
+                        &elicitation.server_name,
+                    )
                 {
                     let prompt_sess = Arc::clone(&sess);
                     let prompt_event = elicitation.clone();
