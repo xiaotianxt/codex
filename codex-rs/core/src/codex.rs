@@ -59,6 +59,7 @@ use codex_protocol::items::PlanItem;
 use codex_protocol::items::TurnItem;
 use codex_protocol::items::UserMessageItem;
 use codex_protocol::mcp::CallToolResult;
+use codex_protocol::mcp::RequestId as ProtocolRequestId;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::format_allow_prefixes;
 use codex_protocol::openai_models::ModelInfo;
@@ -76,7 +77,10 @@ use codex_protocol::protocol::TurnContextItem;
 use codex_protocol::protocol::TurnContextNetworkItem;
 use codex_protocol::protocol::TurnStartedEvent;
 use codex_protocol::request_user_input::RequestUserInputArgs;
+use codex_protocol::request_user_input::RequestUserInputQuestion;
+use codex_protocol::request_user_input::RequestUserInputQuestionOption;
 use codex_protocol::request_user_input::RequestUserInputResponse;
+use codex_rmcp_client::ElicitationAction;
 use codex_rmcp_client::ElicitationResponse;
 use codex_rmcp_client::OAuthCredentialsStoreMode;
 use futures::future::BoxFuture;
@@ -146,6 +150,7 @@ use crate::instructions::UserInstructions;
 use crate::mcp::CODEX_APPS_MCP_SERVER_NAME;
 use crate::mcp::auth::compute_auth_statuses;
 use crate::mcp::effective_mcp_servers;
+use crate::mcp::is_apps_mcp_gateway_elicitation_flow_active;
 use crate::mcp::maybe_prompt_and_install_mcp_dependencies;
 use crate::mcp::with_codex_apps_mcp;
 use crate::mcp_connection_manager::McpConnectionManager;
@@ -302,6 +307,7 @@ impl Codex {
     ) -> CodexResult<CodexSpawnOk> {
         let (tx_sub, rx_sub) = async_channel::bounded(SUBMISSION_CHANNEL_CAPACITY);
         let (tx_event, rx_event) = async_channel::unbounded();
+        let (tx_mcp_event, rx_mcp_event) = async_channel::unbounded();
 
         let loaded_skills = skills_manager.skills_for_config(&config);
 
@@ -911,6 +917,35 @@ impl Session {
         });
     }
 
+    fn start_mcp_event_forwarder(self: &Arc<Self>, rx_event: Receiver<Event>) {
+        let weak_sess = Arc::downgrade(self);
+        tokio::spawn(async move {
+            while let Ok(event) = rx_event.recv().await {
+                let Some(sess) = weak_sess.upgrade() else {
+                    break;
+                };
+                if let EventMsg::ElicitationRequest(elicitation) = &event.msg
+                    && is_apps_mcp_gateway_elicitation_flow_active(
+                        sess.config.as_ref(),
+                        &elicitation.server_name,
+                    )
+                {
+                    let prompt_sess = Arc::clone(&sess);
+                    let prompt_event = elicitation.clone();
+                    tokio::spawn(async move {
+                        prompt_sess
+                            .prompt_codex_apps_elicitation_via_request_user_input(prompt_event)
+                            .await;
+                    });
+                    continue;
+                }
+                if let Err(e) = sess.tx_event.send(event).await {
+                    debug!("dropping event because channel is closed: {e}");
+                }
+            }
+        });
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn make_turn_context(
         auth_manager: Option<Arc<AuthManager>>,
@@ -1360,6 +1395,7 @@ impl Session {
             js_repl,
             next_internal_sub_id: AtomicU64::new(0),
         });
+        sess.start_mcp_event_forwarder(rx_mcp_event);
         if let Some(network_policy_decider_session) = network_policy_decider_session {
             let mut guard = network_policy_decider_session.write().await;
             *guard = Arc::downgrade(&sess);
@@ -2098,6 +2134,47 @@ impl Session {
         self.flush_rollout().await;
         if let Err(e) = self.tx_event.send(event).await {
             debug!("dropping event because channel is closed: {e}");
+        }
+    }
+
+    async fn prompt_codex_apps_elicitation_via_request_user_input(
+        &self,
+        elicitation: codex_protocol::approvals::ElicitationRequestEvent,
+    ) {
+        let response = if let Some((turn_context, cancellation_token)) =
+            self.active_turn_context_and_cancellation_token().await
+        {
+            let args = build_elicitation_request_user_input_args(&elicitation);
+            let call_id = format!("mcp_elicitation_request_{}", turn_context.sub_id);
+            let turn_sub_id = turn_context.sub_id.clone();
+            let user_input = tokio::select! {
+                biased;
+                _ = cancellation_token.cancelled() => {
+                    let empty = RequestUserInputResponse {
+                        answers: HashMap::new(),
+                    };
+                    self.notify_user_input_response(&turn_sub_id, empty).await;
+                    None
+                }
+                response = self.request_user_input(turn_context.as_ref(), call_id, args) => response,
+            };
+            build_mcp_elicitation_response_from_user_input(user_input, &elicitation)
+        } else {
+            ElicitationResponse {
+                action: ElicitationAction::Cancel,
+                content: None,
+            }
+        };
+
+        let request_id = protocol_request_id_to_rmcp(&elicitation.id);
+        if let Err(err) = self
+            .resolve_elicitation(elicitation.server_name, request_id, response)
+            .await
+        {
+            warn!(
+                error = %err,
+                "failed to resolve codex_apps MCP elicitation request"
+            );
         }
     }
 
@@ -3152,6 +3229,157 @@ impl Session {
     }
 }
 
+const MCP_ELICITATION_DECISION_QUESTION_ID: &str = "mcp_elicitation_decision";
+const MCP_ELICITATION_CONTENT_QUESTION_ID: &str = "mcp_elicitation_content";
+const MCP_ELICITATION_ACCEPT: &str = "Accept";
+const MCP_ELICITATION_DECLINE: &str = "Decline";
+const MCP_ELICITATION_CANCEL: &str = "Cancel";
+const REQUEST_USER_INPUT_NOTE_PREFIX: &str = "user_note: ";
+
+fn build_elicitation_request_user_input_args(
+    elicitation: &codex_protocol::approvals::ElicitationRequestEvent,
+) -> RequestUserInputArgs {
+    let mut question = elicitation.message.clone();
+    if let Some(url) = &elicitation.url {
+        question = format!("{question}\nURL: {url}");
+    }
+    let mut questions = vec![RequestUserInputQuestion {
+        id: MCP_ELICITATION_DECISION_QUESTION_ID.to_string(),
+        header: "MCP elicitation".to_string(),
+        question,
+        is_other: true,
+        is_secret: false,
+        options: Some(vec![
+            RequestUserInputQuestionOption {
+                label: MCP_ELICITATION_ACCEPT.to_string(),
+                description: "Accept this elicitation request.".to_string(),
+            },
+            RequestUserInputQuestionOption {
+                label: MCP_ELICITATION_DECLINE.to_string(),
+                description: "Decline this elicitation request.".to_string(),
+            },
+            RequestUserInputQuestionOption {
+                label: MCP_ELICITATION_CANCEL.to_string(),
+                description: "Cancel this elicitation request.".to_string(),
+            },
+        ]),
+    }];
+
+    if elicitation.requested_schema.is_some() {
+        questions.push(RequestUserInputQuestion {
+            id: MCP_ELICITATION_CONTENT_QUESTION_ID.to_string(),
+            header: "Elicitation payload".to_string(),
+            question: "Optional: provide a JSON object to include in the elicitation response."
+                .to_string(),
+            is_other: false,
+            is_secret: false,
+            options: None,
+        });
+    }
+
+    RequestUserInputArgs { questions }
+}
+
+fn build_mcp_elicitation_response_from_user_input(
+    response: Option<RequestUserInputResponse>,
+    elicitation: &codex_protocol::approvals::ElicitationRequestEvent,
+) -> ElicitationResponse {
+    let Some(response) = response else {
+        return ElicitationResponse {
+            action: ElicitationAction::Cancel,
+            content: None,
+        };
+    };
+
+    let action = response
+        .answers
+        .get(MCP_ELICITATION_DECISION_QUESTION_ID)
+        .and_then(request_user_input_answer_to_elicitation_action)
+        .unwrap_or(ElicitationAction::Cancel);
+
+    match action {
+        ElicitationAction::Accept => {
+            let content = if elicitation.requested_schema.is_some() {
+                match parse_elicitation_content_from_user_input(&response) {
+                    Ok(Some(value)) => Some(value),
+                    Ok(None) => Some(serde_json::json!({})),
+                    Err(()) => {
+                        return ElicitationResponse {
+                            action: ElicitationAction::Cancel,
+                            content: None,
+                        };
+                    }
+                }
+            } else {
+                Some(serde_json::json!({}))
+            };
+            ElicitationResponse { action, content }
+        }
+        ElicitationAction::Decline | ElicitationAction::Cancel => ElicitationResponse {
+            action,
+            content: None,
+        },
+    }
+}
+
+fn request_user_input_answer_to_elicitation_action(
+    answer: &codex_protocol::request_user_input::RequestUserInputAnswer,
+) -> Option<ElicitationAction> {
+    answer.answers.iter().find_map(|entry| {
+        if entry.starts_with(REQUEST_USER_INPUT_NOTE_PREFIX) {
+            return None;
+        }
+        match entry.as_str() {
+            MCP_ELICITATION_ACCEPT => Some(ElicitationAction::Accept),
+            MCP_ELICITATION_DECLINE => Some(ElicitationAction::Decline),
+            MCP_ELICITATION_CANCEL => Some(ElicitationAction::Cancel),
+            _ => None,
+        }
+    })
+}
+
+fn parse_elicitation_content_from_user_input(
+    response: &RequestUserInputResponse,
+) -> Result<Option<Value>, ()> {
+    let note = response
+        .answers
+        .get(MCP_ELICITATION_CONTENT_QUESTION_ID)
+        .and_then(request_user_input_note)
+        .or_else(|| {
+            response
+                .answers
+                .get(MCP_ELICITATION_DECISION_QUESTION_ID)
+                .and_then(request_user_input_note)
+        });
+
+    let Some(note) = note else {
+        return Ok(None);
+    };
+
+    serde_json::from_str::<Value>(note)
+        .map(Some)
+        .map_err(|_| ())
+}
+
+fn request_user_input_note(
+    answer: &codex_protocol::request_user_input::RequestUserInputAnswer,
+) -> Option<&str> {
+    answer.answers.iter().find_map(|entry| {
+        let note = entry.strip_prefix(REQUEST_USER_INPUT_NOTE_PREFIX)?;
+        let note = note.trim();
+        if note.is_empty() { None } else { Some(note) }
+    })
+}
+
+fn protocol_request_id_to_rmcp(request_id: &ProtocolRequestId) -> RequestId {
+    match request_id {
+        ProtocolRequestId::String(value) => {
+            rmcp::model::NumberOrString::String(Arc::from(value.as_str()))
+        }
+        ProtocolRequestId::Integer(value) => rmcp::model::NumberOrString::Number(*value),
+    }
+}
+
 async fn submission_loop(sess: Arc<Session>, config: Arc<Config>, rx_sub: Receiver<Submission>) {
     // Seed with context in case there is an OverrideTurnContext first.
     let initial_context = sess.new_default_turn().await;
@@ -3515,6 +3743,8 @@ mod handlers {
         decision: codex_protocol::approvals::ElicitationAction,
         response_content: Option<serde_json::Value>,
     ) {
+        let _apps_gateway_elicitation_flow_active =
+            is_apps_mcp_gateway_elicitation_flow_active(sess.config.as_ref(), &server_name);
         let action = match decision {
             codex_protocol::approvals::ElicitationAction::Accept => ElicitationAction::Accept,
             codex_protocol::approvals::ElicitationAction::Decline => ElicitationAction::Decline,

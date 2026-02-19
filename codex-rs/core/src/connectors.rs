@@ -29,6 +29,10 @@ use crate::token_data::TokenData;
 
 pub const CONNECTORS_CACHE_TTL: Duration = Duration::from_secs(3600);
 
+fn codex_apps_mcp_elicitations_enabled(config: &Config) -> bool {
+    config.features.enabled(Feature::AppsMcpGateway)
+}
+
 #[derive(Clone, PartialEq, Eq)]
 struct AccessibleConnectorsCacheKey {
     chatgpt_base_url: String,
@@ -368,4 +372,22 @@ pub fn connector_name_slug(name: &str) -> String {
 
 fn format_connector_label(name: &str, _id: &str) -> String {
     name.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn codex_apps_mcp_elicitations_disabled_when_apps_mcp_gateway_disabled() {
+        let config = crate::config::test_config();
+        assert!(!codex_apps_mcp_elicitations_enabled(&config));
+    }
+
+    #[test]
+    fn codex_apps_mcp_elicitations_enabled_when_apps_mcp_gateway_enabled() {
+        let mut config = crate::config::test_config();
+        config.features.enable(Feature::AppsMcpGateway);
+        assert!(codex_apps_mcp_elicitations_enabled(&config));
+    }
 }

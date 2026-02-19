@@ -8,6 +8,7 @@ use crate::analytics_client::build_track_events_context;
 use crate::codex::Session;
 use crate::codex::TurnContext;
 use crate::mcp::CODEX_APPS_MCP_SERVER_NAME;
+use crate::mcp::is_apps_mcp_gateway_elicitation_flow_active;
 use crate::protocol::EventMsg;
 use crate::protocol::McpInvocation;
 use crate::protocol::McpToolCallBeginEvent;
@@ -294,6 +295,12 @@ async fn maybe_request_mcp_tool_approval(
     tool_name: &str,
 ) -> Option<McpToolApprovalDecision> {
     if is_full_access_mode(turn_context) {
+        return None;
+    }
+    if server != CODEX_APPS_MCP_SERVER_NAME {
+        return None;
+    }
+    if is_apps_mcp_gateway_elicitation_flow_active(sess.config.as_ref(), server) {
         return None;
     }
 
