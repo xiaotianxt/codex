@@ -3375,16 +3375,8 @@ async fn submission_loop(sess: Arc<Session>, config: Arc<Config>, rx_sub: Receiv
                 server_name,
                 request_id,
                 decision,
-                response_content,
             } => {
-                handlers::resolve_elicitation(
-                    &sess,
-                    server_name,
-                    request_id,
-                    decision,
-                    response_content,
-                )
-                .await;
+                handlers::resolve_elicitation(&sess, server_name, request_id, decision).await;
             }
             Op::Shutdown => {
                 if handlers::shutdown(&sess, sub.id.clone()).await {
@@ -3599,7 +3591,6 @@ mod handlers {
         server_name: String,
         request_id: ProtocolRequestId,
         decision: codex_protocol::approvals::ElicitationAction,
-        response_content: Option<serde_json::Value>,
     ) {
         let action = match decision {
             codex_protocol::approvals::ElicitationAction::Accept => ElicitationAction::Accept,
@@ -3609,7 +3600,7 @@ mod handlers {
         // When accepting, send an empty object as content to satisfy MCP servers
         // that expect non-null content on Accept. For Decline/Cancel, content is None.
         let content = match action {
-            ElicitationAction::Accept => response_content.or_else(|| Some(serde_json::json!({}))),
+            ElicitationAction::Accept => Some(serde_json::json!({})),
             ElicitationAction::Decline | ElicitationAction::Cancel => None,
         };
         let response = ElicitationResponse { action, content };

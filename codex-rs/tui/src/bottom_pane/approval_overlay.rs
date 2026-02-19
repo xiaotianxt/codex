@@ -232,7 +232,6 @@ impl ApprovalOverlay {
                 server_name: server_name.to_string(),
                 request_id: request_id.clone(),
                 decision,
-                response_content: None,
             }));
     }
 
