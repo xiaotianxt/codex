@@ -1126,6 +1126,7 @@ async fn start_server_task(
             roots: None,
             sampling: None,
             elicitation: client_elicitation_capability(
+                &server_name,
                 elicitation_requests.mcp_elicitations_enabled,
             ),
             tasks: None,
@@ -1154,8 +1155,8 @@ async fn start_server_task(
         startup_timeout,
         elicitation_requests.mcp_elicitations_enabled,
     )
-    .await
-    .map_err(StartupOutcomeError::from)?;
+        .await
+        .map_err(StartupOutcomeError::from)?;
 
     let server_supports_sandbox_state_capability = initialize_result
         .capabilities
@@ -1175,14 +1176,18 @@ async fn start_server_task(
     Ok(managed)
 }
 
-fn client_elicitation_capability(mcp_elicitations_enabled: bool) -> Option<ElicitationCapability> {
+fn client_elicitation_capability(
+    server_name: &str,
+    mcp_elicitations_enabled: bool,
+) -> Option<ElicitationCapability> {
     // https://modelcontextprotocol.io/specification/2025-06-18/client/elicitation#capabilities
     // indicates capability objects should be empty objects.
     Some(ElicitationCapability {
         form: Some(FormElicitationCapability {
             schema_validation: None,
         }),
-        url: mcp_elicitations_enabled.then_some(UrlElicitationCapability::default()),
+        url: (mcp_elicitations_enabled || server_name == CODEX_APPS_MCP_SERVER_NAME)
+            .then_some(UrlElicitationCapability::default()),
     })
 }
 
@@ -1249,9 +1254,13 @@ async fn list_tools_for_client(
     }
 
     let fetch_start = Instant::now();
-    let tools =
-        list_tools_for_client_uncached(server_name, client, timeout, mcp_elicitations_enabled)
-            .await?;
+    let tools = list_tools_for_client_uncached(
+        server_name,
+        client,
+        timeout,
+        mcp_elicitations_enabled,
+    )
+    .await?;
     emit_duration(
         MCP_TOOLS_FETCH_UNCACHED_DURATION_METRIC,
         fetch_start.elapsed(),
@@ -1829,7 +1838,8 @@ mod tests {
 
     #[test]
     fn client_elicitation_capability_without_feature_matches_legacy_behavior() {
-        let capability = client_elicitation_capability(false).expect("capability should exist");
+        let capability = client_elicitation_capability("some-other-server", false)
+            .expect("capability should exist");
         assert_eq!(
             capability.form,
             Some(FormElicitationCapability {
@@ -1841,7 +1851,21 @@ mod tests {
 
     #[test]
     fn client_elicitation_capability_with_feature_advertises_form_and_url() {
-        let capability = client_elicitation_capability(true).expect("capability should exist");
+        let capability = client_elicitation_capability("some-other-server", true)
+            .expect("capability should exist");
+        assert_eq!(
+            capability.form,
+            Some(FormElicitationCapability {
+                schema_validation: None,
+            })
+        );
+        assert_eq!(capability.url, Some(UrlElicitationCapability::default()));
+    }
+
+    #[test]
+    fn client_elicitation_capability_for_codex_apps_without_feature_advertises_url() {
+        let capability = client_elicitation_capability(CODEX_APPS_MCP_SERVER_NAME, false)
+            .expect("capability should exist");
         assert_eq!(
             capability.form,
             Some(FormElicitationCapability {
