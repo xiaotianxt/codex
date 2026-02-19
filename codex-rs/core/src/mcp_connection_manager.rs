@@ -1114,8 +1114,6 @@ async fn start_server_task(
     tx_event: Sender<Event>,
     elicitation_requests: ElicitationRequestManager,
 ) -> Result<ManagedClient, StartupOutcomeError> {
-    let elicitation = elicitation_capability_for_server(&server_name);
-
     let params = InitializeRequestParams {
         meta: None,
         capabilities: ClientCapabilities {

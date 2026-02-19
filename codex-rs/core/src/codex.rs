@@ -1371,7 +1371,6 @@ impl Session {
             config.js_repl_node_path.clone(),
             config.js_repl_node_module_dirs.clone(),
         ));
-        let (tx_mcp_event, rx_mcp_event) = async_channel::unbounded();
 
         let prewarm_model_info = models_manager
             .get_model_info(session_configuration.collaboration_mode.model(), &config)
