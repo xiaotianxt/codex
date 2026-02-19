@@ -128,12 +128,12 @@ impl FieldSpec {
         let options = match &self.kind {
             FieldKind::Boolean => Some(vec![
                 RequestUserInputQuestionOption {
-                    label: "true".to_string(),
-                    description: "Set this field to true.".to_string(),
+                    label: "Yes".to_string(),
+                    description: "Choose Yes.".to_string(),
                 },
                 RequestUserInputQuestionOption {
-                    label: "false".to_string(),
-                    description: "Set this field to false.".to_string(),
+                    label: "No".to_string(),
+                    description: "Choose No.".to_string(),
                 },
             ]),
             FieldKind::SingleSelectEnum { choices } => Some(
@@ -141,7 +141,10 @@ impl FieldSpec {
                     .iter()
                     .map(|choice| RequestUserInputQuestionOption {
                         label: choice.label.clone(),
-                        description: format!("Select `{}`.", render_json_primitive(&choice.value)),
+                        description: format!(
+                            "Use value `{}`.",
+                            render_json_primitive(&choice.value)
+                        ),
                     })
                     .collect(),
             ),
@@ -183,18 +186,20 @@ impl FieldSpec {
                 pattern,
                 format,
             } => {
-                constraints.push("Type: string".to_string());
-                if let Some(format) = format {
-                    constraints.push(format!("Format: {format}"));
+                constraints.push("Enter text.".to_string());
+                if format.is_some() {
+                    constraints.push(
+                        "Use text in the requested format (for example: \"example\").".to_string(),
+                    );
                 }
                 if let Some(min_length) = min_length {
-                    constraints.push(format!("minLength: {min_length}"));
+                    constraints.push(format!("Use at least {min_length} characters."));
                 }
                 if let Some(max_length) = max_length {
-                    constraints.push(format!("maxLength: {max_length}"));
+                    constraints.push(format!("Use no more than {max_length} characters."));
                 }
                 if let Some(pattern) = pattern {
-                    constraints.push(format!("Pattern: {pattern}"));
+                    constraints.push(format!("Must follow this pattern: {pattern}."));
                 }
             }
             FieldKind::Number {
@@ -202,60 +207,65 @@ impl FieldSpec {
                 minimum,
                 maximum,
             } => {
-                let type_name = if *integer { "integer" } else { "number" };
-                constraints.push(format!("Type: {type_name}"));
+                constraints.push(if *integer {
+                    "Enter a whole number.".to_string()
+                } else {
+                    "Enter a number.".to_string()
+                });
                 if let Some(minimum) = minimum {
-                    constraints.push(format!("minimum: {minimum}"));
+                    constraints.push(format!("Must be at least {minimum}."));
                 }
                 if let Some(maximum) = maximum {
-                    constraints.push(format!("maximum: {maximum}"));
+                    constraints.push(format!("Must be at most {maximum}."));
                 }
             }
             FieldKind::Boolean => {
-                constraints.push("Type: boolean".to_string());
+                constraints.push("Choose Yes or No below.".to_string());
             }
-            FieldKind::SingleSelectEnum { choices } => {
-                constraints.push("Type: enum (single select)".to_string());
-                let values = choices
-                    .iter()
-                    .map(|choice| choice.label.clone())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                constraints.push(format!("Options: {values}"));
+            FieldKind::SingleSelectEnum { .. } => {
+                constraints.push("Choose one option below.".to_string());
             }
             FieldKind::MultiSelectEnum {
                 choices,
                 min_items,
                 max_items,
             } => {
-                constraints
-                    .push("Type: enum (multi select, enter comma-separated values)".to_string());
+                constraints.push("Choose one or more options.".to_string());
+                constraints.push(
+                    "Enter multiple values separated by commas (for example: Red, Blue)."
+                        .to_string(),
+                );
                 let values = choices
                     .iter()
                     .map(|choice| choice.label.clone())
                     .collect::<Vec<_>>()
                     .join(", ");
-                constraints.push(format!("Allowed values: {values}"));
+                constraints.push(format!("Available options: {values}."));
                 if let Some(min_items) = min_items {
-                    constraints.push(format!("minItems: {min_items}"));
+                    constraints.push(format!("Choose at least {min_items}."));
                 }
                 if let Some(max_items) = max_items {
-                    constraints.push(format!("maxItems: {max_items}"));
+                    constraints.push(format!("Choose no more than {max_items}."));
                 }
             }
         }
 
         constraints.push(if self.required {
-            "Required: yes".to_string()
+            "This answer is required.".to_string()
         } else {
-            "Required: no".to_string()
+            "You can leave this blank.".to_string()
         });
         if let Some(default) = &self.default {
-            constraints.push(format!("Default: {}", render_json_primitive(default)));
+            constraints.push(format!(
+                "If left blank, default is {}.",
+                render_json_primitive(default)
+            ));
+        } else {
+            constraints.push("No default value is set.".to_string());
         }
 
-        lines.push(constraints.join(" | "));
-        lines.push(format!("Enter value for `{}`.", self.property_name));
+        lines.extend(constraints);
+        lines.push(format!("Please enter a value for \"{}\".", self.header));
         lines.join("\n")
     }
 

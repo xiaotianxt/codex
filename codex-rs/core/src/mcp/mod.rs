@@ -36,7 +36,8 @@ const CODEX_CONNECTORS_TOKEN_ENV_VAR: &str = "CODEX_CONNECTORS_TOKEN";
 //const OPENAI_CONNECTORS_MCP_URL: &str = "https://api.openai.com/v1/connectors/gateways/flat/";
 
 // For debugging with forced elicitation
-const OPENAI_CONNECTORS_MCP_URL: &str = "https://api.openai.com/v1/connectors/gateways/flat/?debug_elicitation=REQUIRE_APPROVAL";
+const OPENAI_CONNECTORS_MCP_URL: &str =
+    "https://api.openai.com/v1/connectors/gateways/flat/?debug_elicitation=REQUIRE_APPROVAL";
 
 pub(crate) fn is_apps_mcp_gateway_elicitation_flow_active(
     config: &Config,
