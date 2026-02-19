@@ -31,8 +31,7 @@ pub(crate) const CODEX_APPS_MCP_SERVER_NAME: &str = "codex_apps";
 const CODEX_CONNECTORS_TOKEN_ENV_VAR: &str = "CODEX_CONNECTORS_TOKEN";
 
 // Force elicitations - testing only, soon-to-be legacy endpoint
-//const OPENAI_CONNECTORS_MCP_URL: &str =
-//    "https://api.openai.com/v1/connectors/mcp/?debug_elicitation=REQUIRE_APPROVAL";
+//const OPENAI_CONNECTORS_MCP_URL: &str = "https://api.openai.com/v1/connectors/mcp/?debug_elicitation=REQUIRE_APPROVAL";
 
 // New flat endpoint w/ elicitations always on (for testing)
 //const OPENAI_CONNECTORS_MCP_URL: &str = "https://api.openai.com/v1/connectors/gateways/flat/?debug_elicitation=REQUIRE_APPROVAL";
@@ -41,8 +40,7 @@ const CODEX_CONNECTORS_TOKEN_ENV_VAR: &str = "CODEX_CONNECTORS_TOKEN";
 const OPENAI_CONNECTORS_MCP_URL: &str = "https://api.openai.com/v1/connectors/gateways/flat/";
 
 // Old endpoint - current PROD, no elicitation forcing
-//const OPENAI_CONNECTORS_MCP_URL: &str =
-//    "https://api.openai.com/v1/connectors/mcp/";
+//const OPENAI_CONNECTORS_MCP_URL: &str = "https://api.openai.com/v1/connectors/mcp/";
 
 // Legacy vs new MCP gateway
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
