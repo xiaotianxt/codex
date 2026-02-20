@@ -623,6 +623,13 @@ pub struct Tui {
     /// `current-dir`.
     #[serde(default)]
     pub status_line: Option<Vec<String>>,
+
+    /// Ordered list of terminal title item identifiers.
+    ///
+    /// When set, the TUI renders the selected items into the terminal window/tab title.
+    /// When unset, the TUI defaults to: `project` and `status`.
+    #[serde(default)]
+    pub terminal_title: Option<Vec<String>>,
 }
 
 const fn default_true() -> bool {
