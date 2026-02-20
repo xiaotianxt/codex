@@ -189,15 +189,10 @@ impl ExecPolicyManager {
         let requested_amendment = derive_requested_execpolicy_amendment_from_prefix_rule(
             prefix_rule.as_ref(),
             &evaluation.matched_rules,
-        )
-        .filter(|amendment| {
-            prefix_rule_would_approve_command(
-                exec_policy.as_ref(),
-                &amendment.command,
-                &commands,
-                &exec_policy_fallback,
-            )
-        });
+            exec_policy.as_ref(),
+            &commands,
+            &exec_policy_fallback,
+        );
 
         match evaluation.decision {
             Decision::Forbidden => ExecApprovalRequirement::Forbidden {
@@ -549,6 +544,9 @@ fn try_derive_execpolicy_amendment_for_allow_rules(
 fn derive_requested_execpolicy_amendment_from_prefix_rule(
     prefix_rule: Option<&Vec<String>>,
     matched_rules: &[RuleMatch],
+    exec_policy: &Policy,
+    commands: &[Vec<String>],
+    exec_policy_fallback: &impl Fn(&[String]) -> Decision,
 ) -> Option<ExecPolicyAmendment> {
     let prefix_rule = prefix_rule?;
     if prefix_rule.is_empty() {
@@ -569,10 +567,20 @@ fn derive_requested_execpolicy_amendment_from_prefix_rule(
         return None;
     }
 
-    Some(ExecPolicyAmendment::new(prefix_rule.clone()))
+    let amendment = ExecPolicyAmendment::new(prefix_rule.clone());
+    if prefix_rule_would_approve_all_commands(
+        exec_policy,
+        &amendment.command,
+        commands,
+        exec_policy_fallback,
+    ) {
+        Some(amendment)
+    } else {
+        None
+    }
 }
 
-fn prefix_rule_would_approve_command(
+fn prefix_rule_would_approve_all_commands(
     exec_policy: &Policy,
     prefix_rule: &[String],
     commands: &[Vec<String>],
@@ -586,10 +594,12 @@ fn prefix_rule_would_approve_command(
         return false;
     }
 
-    policy_with_prefix_rule
-        .check_multiple(commands.iter(), exec_policy_fallback)
-        .decision
-        == Decision::Allow
+    commands.iter().all(|command| {
+        policy_with_prefix_rule
+            .check(command, exec_policy_fallback)
+            .decision
+            == Decision::Allow
+    })
 }
 
 /// Only return a reason when a policy rule drove the prompt decision.
@@ -1333,7 +1343,7 @@ prefix_rule(
     }
 
     #[tokio::test]
-    async fn request_rule_omits_prefix_rule_when_it_does_not_approve_command() {
+    async fn request_rule_falls_back_when_prefix_rule_does_not_approve_all_commands() {
         let command = vec![
             "bash".to_string(),
             "-lc".to_string(),
@@ -1620,11 +1630,28 @@ prefix_rule(
         );
     }
 
+    fn derive_requested_execpolicy_amendment_for_test(
+        prefix_rule: Option<&Vec<String>>,
+        matched_rules: &[RuleMatch],
+    ) -> Option<ExecPolicyAmendment> {
+        let commands = prefix_rule
+            .cloned()
+            .map(|prefix_rule| vec![prefix_rule])
+            .unwrap_or_else(|| vec![vec!["echo".to_string()]]);
+        derive_requested_execpolicy_amendment_from_prefix_rule(
+            prefix_rule,
+            matched_rules,
+            &Policy::empty(),
+            &commands,
+            &|_: &[String]| Decision::Allow,
+        )
+    }
+
     #[test]
     fn derive_requested_execpolicy_amendment_returns_none_for_missing_prefix_rule() {
         assert_eq!(
             None,
-            derive_requested_execpolicy_amendment_from_prefix_rule(None, &[])
+            derive_requested_execpolicy_amendment_for_test(None, &[])
         );
     }
 
@@ -1632,7 +1659,7 @@ prefix_rule(
     fn derive_requested_execpolicy_amendment_returns_none_for_empty_prefix_rule() {
         assert_eq!(
             None,
-            derive_requested_execpolicy_amendment_from_prefix_rule(Some(&Vec::new()), &[])
+            derive_requested_execpolicy_amendment_for_test(Some(&Vec::new()), &[])
         );
     }
 
@@ -1640,7 +1667,7 @@ prefix_rule(
     fn derive_requested_execpolicy_amendment_returns_none_for_exact_banned_prefix_rule() {
         assert_eq!(
             None,
-            derive_requested_execpolicy_amendment_from_prefix_rule(
+            derive_requested_execpolicy_amendment_for_test(
                 Some(&vec!["python".to_string(), "-c".to_string()]),
                 &[],
             )
@@ -1659,7 +1686,7 @@ prefix_rule(
         ] {
             assert_eq!(
                 None,
-                derive_requested_execpolicy_amendment_from_prefix_rule(Some(&prefix_rule), &[])
+                derive_requested_execpolicy_amendment_for_test(Some(&prefix_rule), &[])
             );
         }
     }
@@ -1685,7 +1712,7 @@ prefix_rule(
         ] {
             assert_eq!(
                 None,
-                derive_requested_execpolicy_amendment_from_prefix_rule(Some(&prefix_rule), &[])
+                derive_requested_execpolicy_amendment_for_test(Some(&prefix_rule), &[])
             );
         }
     }
@@ -1700,7 +1727,7 @@ prefix_rule(
 
         assert_eq!(
             Some(ExecPolicyAmendment::new(prefix_rule.clone())),
-            derive_requested_execpolicy_amendment_from_prefix_rule(Some(&prefix_rule), &[])
+            derive_requested_execpolicy_amendment_for_test(Some(&prefix_rule), &[])
         );
     }
 
@@ -1715,7 +1742,7 @@ prefix_rule(
         }];
         assert_eq!(
             None,
-            derive_requested_execpolicy_amendment_from_prefix_rule(
+            derive_requested_execpolicy_amendment_for_test(
                 Some(&prefix_rule),
                 &matched_rules_prompt
             ),
@@ -1728,7 +1755,7 @@ prefix_rule(
         }];
         assert_eq!(
             None,
-            derive_requested_execpolicy_amendment_from_prefix_rule(
+            derive_requested_execpolicy_amendment_for_test(
                 Some(&prefix_rule),
                 &matched_rules_allow
             ),
@@ -1741,9 +1768,9 @@ prefix_rule(
         }];
         assert_eq!(
             None,
-            derive_requested_execpolicy_amendment_from_prefix_rule(
+            derive_requested_execpolicy_amendment_for_test(
                 Some(&prefix_rule),
-                &matched_rules_forbidden
+                &matched_rules_forbidden,
             ),
             "should return none when prompt policy matches"
         );
