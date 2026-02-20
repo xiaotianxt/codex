@@ -198,13 +198,35 @@ fn create_approval_parameters() -> BTreeMap<String, JsonSchema> {
 
     properties.insert(
         "prefix_rule".to_string(),
-        JsonSchema::Array {
-            items: Box::new(JsonSchema::String { description: None }),
-            description: Some(
-                r#"Only specify when sandbox_permissions is `require_escalated`.
-                    Suggest a prefix command pattern that will allow you to fulfill similar requests from the user in the future.
-                    Should be a short but reasonable prefix, e.g. [\"git\", \"pull\"] or [\"uv\", \"run\"] or [\"pytest\"]."#.to_string(),
-            ),
+        JsonSchema::Object {
+            properties: BTreeMap::from([
+                (
+                    "command".to_string(),
+                    JsonSchema::Array {
+                        items: Box::new(JsonSchema::String { description: None }),
+                        description: Some(
+                            "Command prefix pattern to persist for future approvals.".to_string(),
+                        ),
+                    },
+                ),
+                (
+                    "permission".to_string(),
+                    JsonSchema::Object {
+                        properties: BTreeMap::from([(
+                            "sandbox_policy".to_string(),
+                            JsonSchema::Object {
+                                properties: BTreeMap::new(),
+                                required: None,
+                                additional_properties: Some(AdditionalProperties::Boolean(true)),
+                            },
+                        )]),
+                        required: None,
+                        additional_properties: None,
+                    },
+                ),
+            ]),
+            required: Some(vec!["command".to_string()]),
+            additional_properties: None,
         },
     );
 

@@ -29,6 +29,7 @@ use std::sync::Weak;
 use std::time::Duration;
 
 use codex_network_proxy::NetworkProxy;
+use codex_protocol::models::PrefixRule;
 use rand::Rng;
 use rand::rng;
 use tokio::sync::Mutex;
@@ -89,7 +90,7 @@ pub(crate) struct ExecCommandRequest {
     pub tty: bool,
     pub sandbox_permissions: SandboxPermissions,
     pub justification: Option<String>,
-    pub prefix_rule: Option<Vec<String>>,
+    pub prefix_rule: Option<PrefixRule>,
 }
 
 #[derive(Debug)]

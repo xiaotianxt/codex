@@ -4,6 +4,7 @@ use crate::error::Result;
 use crate::rule::PatternToken;
 use crate::rule::PrefixPattern;
 use crate::rule::PrefixRule;
+use crate::rule::PrefixRulePermission;
 use crate::rule::RuleMatch;
 use crate::rule::RuleRef;
 use multimap::MultiMap;
@@ -55,7 +56,12 @@ impl Policy {
         prefixes
     }
 
-    pub fn add_prefix_rule(&mut self, prefix: &[String], decision: Decision) -> Result<()> {
+    pub fn add_prefix_rule(
+        &mut self,
+        prefix: &[String],
+        decision: Decision,
+        permission: Option<PrefixRulePermission>,
+    ) -> Result<()> {
         let (first_token, rest) = prefix
             .split_first()
             .ok_or_else(|| Error::InvalidPattern("prefix cannot be empty".to_string()))?;
@@ -71,6 +77,7 @@ impl Policy {
             },
             decision,
             justification: None,
+            permission,
         });
 
         self.rules_by_program.insert(first_token.clone(), rule);

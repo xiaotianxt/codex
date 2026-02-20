@@ -58,6 +58,13 @@ impl PrefixPattern {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PrefixRulePermission {
+    /// JSON-encoded `codex_protocol::protocol::SandboxPolicy`.
+    pub sandbox_policy: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum RuleMatch {
     PrefixRuleMatch {
         #[serde(rename = "matchedPrefix")]
@@ -69,6 +76,8 @@ pub enum RuleMatch {
         /// (e.g., prompt reasons or rejection messages).
         #[serde(skip_serializing_if = "Option::is_none")]
         justification: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        permission: Option<PrefixRulePermission>,
     },
     HeuristicsRuleMatch {
         command: Vec<String>,
@@ -90,6 +99,7 @@ pub struct PrefixRule {
     pub pattern: PrefixPattern,
     pub decision: Decision,
     pub justification: Option<String>,
+    pub permission: Option<PrefixRulePermission>,
 }
 
 pub trait Rule: Any + Debug + Send + Sync {
@@ -114,6 +124,7 @@ impl Rule for PrefixRule {
                 matched_prefix,
                 decision: self.decision,
                 justification: self.justification.clone(),
+                permission: self.permission.clone(),
             })
     }
 

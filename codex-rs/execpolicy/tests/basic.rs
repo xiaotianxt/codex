@@ -55,8 +55,8 @@ fn append_allow_prefix_rule_dedupes_existing_rule() -> Result<()> {
     let policy_path = tmp.path().join("rules").join("default.rules");
     let prefix = tokens(&["python3"]);
 
-    blocking_append_allow_prefix_rule(&policy_path, &prefix)?;
-    blocking_append_allow_prefix_rule(&policy_path, &prefix)?;
+    blocking_append_allow_prefix_rule(&policy_path, &prefix, None)?;
+    blocking_append_allow_prefix_rule(&policy_path, &prefix, None)?;
 
     let contents = fs::read_to_string(&policy_path).context("read policy")?;
     assert_eq!(
@@ -86,6 +86,7 @@ prefix_rule(
                 matched_prefix: tokens(&["git", "status"]),
                 decision: Decision::Allow,
                 justification: None,
+                permission: None,
             }],
         },
         evaluation
@@ -117,6 +118,7 @@ prefix_rule(
                 matched_prefix: tokens(&["rm"]),
                 decision: Decision::Forbidden,
                 justification: Some("destructive command".to_string()),
+                permission: None,
             }],
         },
         evaluation
@@ -145,6 +147,7 @@ prefix_rule(
                 matched_prefix: tokens(&["ls"]),
                 decision: Decision::Allow,
                 justification: Some("safe and commonly used".to_string()),
+                permission: None,
             }],
         },
         evaluation
@@ -174,7 +177,7 @@ prefix_rule(
 #[test]
 fn add_prefix_rule_extends_policy() -> Result<()> {
     let mut policy = Policy::empty();
-    policy.add_prefix_rule(&tokens(&["ls", "-l"]), Decision::Prompt)?;
+    policy.add_prefix_rule(&tokens(&["ls", "-l"]), Decision::Prompt, None)?;
 
     let rules = rule_snapshots(policy.rules().get_vec("ls").context("missing ls rules")?);
     assert_eq!(
@@ -185,6 +188,7 @@ fn add_prefix_rule_extends_policy() -> Result<()> {
             },
             decision: Decision::Prompt,
             justification: None,
+            permission: None,
         })],
         rules
     );
@@ -197,6 +201,7 @@ fn add_prefix_rule_extends_policy() -> Result<()> {
                 matched_prefix: tokens(&["ls", "-l"]),
                 decision: Decision::Prompt,
                 justification: None,
+                permission: None,
             }],
         },
         evaluation
@@ -207,7 +212,7 @@ fn add_prefix_rule_extends_policy() -> Result<()> {
 #[test]
 fn add_prefix_rule_rejects_empty_prefix() -> Result<()> {
     let mut policy = Policy::empty();
-    let result = policy.add_prefix_rule(&[], Decision::Allow);
+    let result = policy.add_prefix_rule(&[], Decision::Allow, None);
 
     match result.unwrap_err() {
         Error::InvalidPattern(message) => assert_eq!(message, "prefix cannot be empty"),
@@ -245,6 +250,7 @@ prefix_rule(
                 },
                 decision: Decision::Prompt,
                 justification: None,
+                permission: None,
             }),
             RuleSnapshot::Prefix(PrefixRule {
                 pattern: PrefixPattern {
@@ -253,6 +259,7 @@ prefix_rule(
                 },
                 decision: Decision::Forbidden,
                 justification: None,
+                permission: None,
             }),
         ],
         git_rules
@@ -266,6 +273,7 @@ prefix_rule(
                 matched_prefix: tokens(&["git"]),
                 decision: Decision::Prompt,
                 justification: None,
+                permission: None,
             }],
         },
         status_eval
@@ -280,11 +288,13 @@ prefix_rule(
                     matched_prefix: tokens(&["git"]),
                     decision: Decision::Prompt,
                     justification: None,
+                    permission: None,
                 },
                 RuleMatch::PrefixRuleMatch {
                     matched_prefix: tokens(&["git", "commit"]),
                     decision: Decision::Forbidden,
                     justification: None,
+                    permission: None,
                 },
             ],
         },
@@ -319,6 +329,7 @@ prefix_rule(
             },
             decision: Decision::Allow,
             justification: None,
+            permission: None,
         })],
         bash_rules
     );
@@ -330,6 +341,7 @@ prefix_rule(
             },
             decision: Decision::Allow,
             justification: None,
+            permission: None,
         })],
         sh_rules
     );
@@ -342,6 +354,7 @@ prefix_rule(
                 matched_prefix: tokens(&["bash", "-c"]),
                 decision: Decision::Allow,
                 justification: None,
+                permission: None,
             }],
         },
         bash_eval
@@ -355,6 +368,7 @@ prefix_rule(
                 matched_prefix: tokens(&["sh", "-l"]),
                 decision: Decision::Allow,
                 justification: None,
+                permission: None,
             }],
         },
         sh_eval
@@ -389,6 +403,7 @@ prefix_rule(
             },
             decision: Decision::Allow,
             justification: None,
+            permission: None,
         })],
         rules
     );
@@ -401,6 +416,7 @@ prefix_rule(
                 matched_prefix: tokens(&["npm", "i", "--legacy-peer-deps"]),
                 decision: Decision::Allow,
                 justification: None,
+                permission: None,
             }],
         },
         npm_i
@@ -417,6 +433,7 @@ prefix_rule(
                 matched_prefix: tokens(&["npm", "install", "--no-save"]),
                 decision: Decision::Allow,
                 justification: None,
+                permission: None,
             }],
         },
         npm_install
@@ -447,6 +464,7 @@ prefix_rule(
                 matched_prefix: tokens(&["git", "status"]),
                 decision: Decision::Allow,
                 justification: None,
+                permission: None,
             }],
         },
         match_eval
@@ -494,11 +512,13 @@ prefix_rule(
                     matched_prefix: tokens(&["git"]),
                     decision: Decision::Prompt,
                     justification: None,
+                    permission: None,
                 },
                 RuleMatch::PrefixRuleMatch {
                     matched_prefix: tokens(&["git", "commit"]),
                     decision: Decision::Forbidden,
                     justification: None,
+                    permission: None,
                 },
             ],
         },
@@ -537,16 +557,19 @@ prefix_rule(
                     matched_prefix: tokens(&["git"]),
                     decision: Decision::Prompt,
                     justification: None,
+                    permission: None,
                 },
                 RuleMatch::PrefixRuleMatch {
                     matched_prefix: tokens(&["git"]),
                     decision: Decision::Prompt,
                     justification: None,
+                    permission: None,
                 },
                 RuleMatch::PrefixRuleMatch {
                     matched_prefix: tokens(&["git", "commit"]),
                     decision: Decision::Forbidden,
                     justification: None,
+                    permission: None,
                 },
             ],
         },

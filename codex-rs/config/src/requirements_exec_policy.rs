@@ -174,6 +174,7 @@ impl RequirementsExecPolicyToml {
                     },
                     decision,
                     justification: justification.clone(),
+                    permission: None,
                 });
                 rules_by_program.insert(head.clone(), rule);
             }

@@ -59,6 +59,7 @@ pub enum AmendError {
 pub fn blocking_append_allow_prefix_rule(
     policy_path: &Path,
     prefix: &[String],
+    permission_sandbox_policy: Option<&str>,
 ) -> Result<(), AmendError> {
     if prefix.is_empty() {
         return Err(AmendError::EmptyPrefix);
@@ -70,7 +71,15 @@ pub fn blocking_append_allow_prefix_rule(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|source| AmendError::SerializePrefix { source })?;
     let pattern = format!("[{}]", tokens.join(", "));
-    let rule = format!(r#"prefix_rule(pattern={pattern}, decision="allow")"#);
+    let rule = if let Some(permission_sandbox_policy) = permission_sandbox_policy {
+        let encoded_permission = serde_json::to_string(permission_sandbox_policy)
+            .map_err(|source| AmendError::SerializePrefix { source })?;
+        format!(
+            r#"prefix_rule(pattern={pattern}, decision="allow", permission={encoded_permission})"#
+        )
+    } else {
+        format!(r#"prefix_rule(pattern={pattern}, decision="allow")"#)
+    };
 
     let dir = policy_path
         .parent()
@@ -152,6 +161,7 @@ mod tests {
         blocking_append_allow_prefix_rule(
             &policy_path,
             &[String::from("echo"), String::from("Hello, world!")],
+            None,
         )
         .expect("append rule");
 
@@ -178,6 +188,7 @@ mod tests {
         blocking_append_allow_prefix_rule(
             &policy_path,
             &[String::from("echo"), String::from("Hello, world!")],
+            None,
         )
         .expect("append rule");
 
@@ -204,6 +215,7 @@ prefix_rule(pattern=["echo", "Hello, world!"], decision="allow")
         blocking_append_allow_prefix_rule(
             &policy_path,
             &[String::from("echo"), String::from("Hello, world!")],
+            None,
         )
         .expect("append rule");
 

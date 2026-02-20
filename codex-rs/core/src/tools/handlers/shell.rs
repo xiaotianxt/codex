@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use codex_protocol::ThreadId;
 use codex_protocol::models::FunctionCallOutputBody;
+use codex_protocol::models::PrefixRule;
 use codex_protocol::models::ShellCommandToolCallParams;
 use codex_protocol::models::ShellToolCallParams;
 use std::sync::Arc;
@@ -34,7 +35,7 @@ pub struct ShellCommandHandler;
 struct RunExecLikeArgs {
     tool_name: String,
     exec_params: ExecParams,
-    prefix_rule: Option<Vec<String>>,
+    prefix_rule: Option<PrefixRule>,
     session: Arc<crate::codex::Session>,
     turn: Arc<TurnContext>,
     tracker: crate::tools::context::SharedTurnDiffTracker,

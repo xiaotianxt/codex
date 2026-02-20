@@ -1139,6 +1139,7 @@ mod tests {
                     matched_prefix: tokens(&["rm"]),
                     decision: Decision::Forbidden,
                     justification: None,
+                    permission: None,
                 }],
             }
         );

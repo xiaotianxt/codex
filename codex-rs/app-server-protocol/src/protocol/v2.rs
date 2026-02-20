@@ -807,15 +807,32 @@ impl From<codex_protocol::protocol::SandboxPolicy> for SandboxPolicy {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
-#[serde(transparent)]
-#[ts(type = "Array<string>", export_to = "v2/")]
+#[serde(rename_all = "snake_case")]
+#[ts(export_to = "v2/")]
+pub struct ExecPolicyRulePermission {
+    pub sandbox_policy: SandboxPolicy,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export_to = "v2/")]
 pub struct ExecPolicyAmendment {
     pub command: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub permission: Option<ExecPolicyRulePermission>,
 }
 
 impl ExecPolicyAmendment {
     pub fn into_core(self) -> CoreExecPolicyAmendment {
-        CoreExecPolicyAmendment::new(self.command)
+        CoreExecPolicyAmendment {
+            command: self.command,
+            permission: self.permission.map(|permission| {
+                codex_protocol::approvals::ExecPolicyRulePermission {
+                    sandbox_policy: permission.sandbox_policy.to_core(),
+                }
+            }),
+        }
     }
 }
 
@@ -823,6 +840,9 @@ impl From<CoreExecPolicyAmendment> for ExecPolicyAmendment {
     fn from(value: CoreExecPolicyAmendment) -> Self {
         Self {
             command: value.command().to_vec(),
+            permission: value.permission.map(|permission| ExecPolicyRulePermission {
+                sandbox_policy: SandboxPolicy::from(permission.sandbox_policy),
+            }),
         }
     }
 }

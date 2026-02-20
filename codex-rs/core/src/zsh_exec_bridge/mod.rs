@@ -1,5 +1,23 @@
+#[cfg(unix)]
+use crate::exec::ExecExpiration;
+#[cfg(unix)]
+use crate::exec::ExecParams;
 use crate::exec::ExecToolCallOutput;
+#[cfg(unix)]
+use crate::exec::process_exec_tool_call;
+#[cfg(unix)]
+use crate::protocol::SandboxPolicy;
+#[cfg(unix)]
+use crate::sandboxing::SandboxPermissions;
+#[cfg(unix)]
+use crate::sandboxing::policy_merge::extend_sandbox_policy;
 use crate::tools::sandboxing::ToolError;
+#[cfg(unix)]
+use codex_execpolicy::RuleMatch;
+#[cfg(unix)]
+use codex_protocol::config_types::WindowsSandboxLevel;
+#[cfg(unix)]
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -76,6 +94,7 @@ enum WrapperIpcResponse {
         request_id: String,
         action: WrapperExecAction,
         reason: Option<String>,
+        sandbox_policy: Option<SandboxPolicy>,
     },
 }
 
@@ -349,6 +368,35 @@ impl ZshExecBridge {
             argv.clone()
         };
 
+        let matched_rules = session
+            .services
+            .exec_policy
+            .current()
+            .matches_for_command(&command_for_approval, None);
+        let mut effective_sandbox_policy = turn.sandbox_policy.clone();
+        let mut used_rule_permission = false;
+        for matched_rule in &matched_rules {
+            let RuleMatch::PrefixRuleMatch {
+                permission: Some(permission),
+                ..
+            } = matched_rule
+            else {
+                continue;
+            };
+
+            let permission_policy = serde_json::from_str::<SandboxPolicy>(
+                &permission.sandbox_policy,
+            )
+            .map_err(|err| {
+                ToolError::Rejected(format!(
+                    "invalid permission sandbox_policy for matched execpolicy rule: {err}"
+                ))
+            })?;
+            effective_sandbox_policy =
+                extend_sandbox_policy(&effective_sandbox_policy, &permission_policy);
+            used_rule_permission = true;
+        }
+
         let approval_id = Uuid::new_v4().to_string();
         let decision = session
             .request_command_approval(
@@ -363,21 +411,26 @@ impl ZshExecBridge {
             )
             .await;
 
-        let (action, reason, user_rejected) = match decision {
+        let (action, reason, user_rejected, sandbox_policy) = match decision {
             ReviewDecision::Approved
             | ReviewDecision::ApprovedForSession
-            | ReviewDecision::ApprovedExecpolicyAmendment { .. } => {
-                (WrapperExecAction::Run, None, false)
-            }
+            | ReviewDecision::ApprovedExecpolicyAmendment { .. } => (
+                WrapperExecAction::Run,
+                None,
+                false,
+                used_rule_permission.then_some(effective_sandbox_policy),
+            ),
             ReviewDecision::Denied => (
                 WrapperExecAction::Deny,
                 Some("command denied by host approval policy".to_string()),
                 true,
+                None,
             ),
             ReviewDecision::Abort => (
                 WrapperExecAction::Deny,
                 Some("command aborted by host approval policy".to_string()),
                 true,
+                None,
             ),
         };
 
@@ -387,6 +440,7 @@ impl ZshExecBridge {
                 request_id,
                 action,
                 reason,
+                sandbox_policy,
             },
         )
         .await?;
@@ -480,12 +534,13 @@ fn run_exec_wrapper_mode() -> anyhow::Result<()> {
         let response: WrapperIpcResponse =
             serde_json::from_str(response_buf.trim()).context("parse wrapper response")?;
 
-        let (response_request_id, action, reason) = match response {
+        let (response_request_id, action, reason, sandbox_policy) = match response {
             WrapperIpcResponse::ExecResponse {
                 request_id,
                 action,
                 reason,
-            } => (request_id, action, reason),
+                sandbox_policy,
+            } => (request_id, action, reason, sandbox_policy),
         };
         if response_request_id != request_id {
             anyhow::bail!(
@@ -500,6 +555,56 @@ fn run_exec_wrapper_mode() -> anyhow::Result<()> {
                 tracing::warn!("execution denied");
             }
             std::process::exit(1);
+        }
+
+        if let Some(sandbox_policy) = sandbox_policy {
+            let mut env: HashMap<String, String> = std::env::vars().collect();
+            env.remove(ZSH_EXEC_WRAPPER_MODE_ENV_VAR);
+            env.remove(ZSH_EXEC_BRIDGE_WRAPPER_SOCKET_ENV_VAR);
+            env.remove(EXEC_WRAPPER_ENV_VAR);
+
+            let command = if argv.is_empty() {
+                vec![file.clone()]
+            } else {
+                argv.clone()
+            };
+            let cwd = std::env::current_dir().context("resolve wrapper cwd")?;
+            let codex_linux_sandbox_exe = std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(|dir| dir.join("codex-linux-sandbox")))
+                .filter(|candidate| candidate.is_file());
+            let exec_params = ExecParams {
+                command,
+                cwd: cwd.clone(),
+                expiration: ExecExpiration::DefaultTimeout,
+                env,
+                network: None,
+                network_attempt_id: None,
+                sandbox_permissions: SandboxPermissions::UseDefault,
+                windows_sandbox_level: WindowsSandboxLevel::Disabled,
+                justification: None,
+                arg0: None,
+            };
+
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .context("create tokio runtime for wrapper sandbox execution")?;
+            let output = runtime.block_on(process_exec_tool_call(
+                exec_params,
+                &sandbox_policy,
+                &cwd,
+                &codex_linux_sandbox_exe,
+                false,
+                None,
+            ))?;
+            std::io::stdout()
+                .write_all(output.stdout.text.as_bytes())
+                .context("write wrapped stdout")?;
+            std::io::stderr()
+                .write_all(output.stderr.text.as_bytes())
+                .context("write wrapped stderr")?;
+            std::process::exit(output.exit_code);
         }
 
         let mut command = std::process::Command::new(&file);

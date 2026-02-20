@@ -42,6 +42,7 @@ While commands are running inside the sandbox, here are some scenarios that will
 ## prefix_rule guidance
 
 When choosing a `prefix_rule`, request one that will allow you to fulfill similar requests from the user in the future without re-requesting escalation. It should be categorical and reasonably scoped to similar capabilities. You should rarely pass the entire command into `prefix_rule`.
+`prefix_rule` can be either an array of command tokens (legacy) or an object like `{"command":[...], "permission":{"sandbox_policy": ...}}` when you need to persist a stricter sandbox policy for matching commands.
 
 ### Banned prefix_rules 
 Avoid requesting overly broad prefixes that the user would be ill-advised to approve. For example, do not request ["python3"], ["python", "-"], or other similar prefixes.
@@ -54,4 +55,3 @@ Good examples of prefixes:
 - ["gh", "pr", "check"]
 - ["pytest"]
 - ["cargo", "test"]
-

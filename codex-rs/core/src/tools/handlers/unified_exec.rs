@@ -19,6 +19,7 @@ use crate::unified_exec::UnifiedExecResponse;
 use crate::unified_exec::WriteStdinRequest;
 use async_trait::async_trait;
 use codex_protocol::models::FunctionCallOutputBody;
+use codex_protocol::models::PrefixRule;
 use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -45,7 +46,7 @@ pub(crate) struct ExecCommandArgs {
     #[serde(default)]
     justification: Option<String>,
     #[serde(default)]
-    prefix_rule: Option<Vec<String>>,
+    prefix_rule: Option<PrefixRule>,
 }
 
 #[derive(Debug, Deserialize)]

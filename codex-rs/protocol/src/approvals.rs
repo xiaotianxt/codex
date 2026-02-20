@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use crate::mcp::RequestId;
 use crate::parse_command::ParsedCommand;
 use crate::protocol::FileChange;
+use crate::protocol::SandboxPolicy;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde::Serialize;
@@ -15,15 +16,33 @@ use ts_rs::TS;
 /// `prefix_rule(..., decision="allow")`, letting the agent bypass approval for
 /// commands that start with this token sequence.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
-#[serde(transparent)]
-#[ts(type = "Array<string>")]
+#[serde(rename_all = "snake_case")]
+pub struct ExecPolicyRulePermission {
+    pub sandbox_policy: SandboxPolicy,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
 pub struct ExecPolicyAmendment {
     pub command: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub permission: Option<ExecPolicyRulePermission>,
 }
 
 impl ExecPolicyAmendment {
     pub fn new(command: Vec<String>) -> Self {
-        Self { command }
+        Self {
+            command,
+            permission: None,
+        }
+    }
+
+    pub fn with_permission(command: Vec<String>, permission: ExecPolicyRulePermission) -> Self {
+        Self {
+            command,
+            permission: Some(permission),
+        }
     }
 
     pub fn command(&self) -> &[String] {
@@ -33,7 +52,7 @@ impl ExecPolicyAmendment {
 
 impl From<Vec<String>> for ExecPolicyAmendment {
     fn from(command: Vec<String>) -> Self {
-        Self { command }
+        Self::new(command)
     }
 }
 

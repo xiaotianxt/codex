@@ -43,6 +43,44 @@ impl SandboxPermissions {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+pub struct PrefixRuleDetails {
+    pub command: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub permission: Option<crate::approvals::ExecPolicyRulePermission>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema, TS)]
+#[serde(untagged)]
+pub enum PrefixRule {
+    Command(Vec<String>),
+    Details(PrefixRuleDetails),
+}
+
+impl PrefixRule {
+    pub fn command(&self) -> &[String] {
+        match self {
+            Self::Command(command) => command,
+            Self::Details(details) => &details.command,
+        }
+    }
+
+    pub fn permission(&self) -> Option<&crate::approvals::ExecPolicyRulePermission> {
+        match self {
+            Self::Command(_) => None,
+            Self::Details(details) => details.permission.as_ref(),
+        }
+    }
+}
+
+impl From<Vec<String>> for PrefixRule {
+    fn from(command: Vec<String>) -> Self {
+        Self::Command(command)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, JsonSchema, TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResponseInputItem {
@@ -741,7 +779,7 @@ pub struct ShellToolCallParams {
     /// Suggests a command prefix to persist for future sessions
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub prefix_rule: Option<Vec<String>>,
+    pub prefix_rule: Option<PrefixRule>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub justification: Option<String>,
 }
@@ -764,7 +802,7 @@ pub struct ShellCommandToolCallParams {
     pub sandbox_permissions: Option<SandboxPermissions>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
-    pub prefix_rule: Option<Vec<String>>,
+    pub prefix_rule: Option<PrefixRule>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub justification: Option<String>,
 }
@@ -1231,6 +1269,7 @@ mod tests {
             .add_prefix_rule(
                 &["git".to_string(), "pull".to_string()],
                 codex_execpolicy::Decision::Allow,
+                None,
             )
             .expect("add rule");
         let instructions = DeveloperInstructions::from_permissions_with_network(
@@ -1291,6 +1330,7 @@ mod tests {
                 .add_prefix_rule(
                     &[format!("tool-{i:03}"), "x".repeat(500)],
                     codex_execpolicy::Decision::Allow,
+                    None,
                 )
                 .expect("add rule");
         }
@@ -1560,6 +1600,56 @@ mod tests {
                 justification: None,
             },
             params
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn deserialize_shell_tool_call_params_with_legacy_prefix_rule_array() -> Result<()> {
+        let json = r#"{
+            "command": ["ls", "-l"],
+            "prefix_rule": ["cargo", "test"]
+        }"#;
+
+        let params: ShellToolCallParams = serde_json::from_str(json)?;
+        assert_eq!(
+            params.prefix_rule,
+            Some(PrefixRule::Command(vec![
+                "cargo".to_string(),
+                "test".to_string()
+            ]))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn deserialize_shell_tool_call_params_with_permission_prefix_rule() -> Result<()> {
+        let json = r#"{
+            "command": ["ls", "-l"],
+            "prefix_rule": {
+                "command": ["cargo", "test", "-p", "codex-core"],
+                "permission": {
+                    "sandbox_policy": {
+                        "type": "read-only"
+                    }
+                }
+            }
+        }"#;
+
+        let params: ShellToolCallParams = serde_json::from_str(json)?;
+        assert_eq!(
+            params.prefix_rule,
+            Some(PrefixRule::Details(PrefixRuleDetails {
+                command: vec![
+                    "cargo".to_string(),
+                    "test".to_string(),
+                    "-p".to_string(),
+                    "codex-core".to_string(),
+                ],
+                permission: Some(crate::approvals::ExecPolicyRulePermission {
+                    sandbox_policy: SandboxPolicy::new_read_only_policy(),
+                }),
+            }))
         );
         Ok(())
     }

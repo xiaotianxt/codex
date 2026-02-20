@@ -21,6 +21,7 @@ use crate::error::Result;
 use crate::rule::PatternToken;
 use crate::rule::PrefixPattern;
 use crate::rule::PrefixRule;
+use crate::rule::PrefixRulePermission;
 use crate::rule::RuleRef;
 use crate::rule::validate_match_examples;
 use crate::rule::validate_not_match_examples;
@@ -213,6 +214,7 @@ fn policy_builtins(builder: &mut GlobalsBuilder) {
         r#match: Option<UnpackList<Value<'v>>>,
         not_match: Option<UnpackList<Value<'v>>>,
         justification: Option<&'v str>,
+        permission: Option<&'v str>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> anyhow::Result<NoneType> {
         let decision = match decision {
@@ -225,6 +227,23 @@ fn policy_builtins(builder: &mut GlobalsBuilder) {
                 return Err(Error::InvalidRule("justification cannot be empty".to_string()).into());
             }
             Some(raw) => Some(raw.to_string()),
+            None => None,
+        };
+
+        let permission = match permission {
+            Some(raw) if raw.trim().is_empty() => {
+                return Err(Error::InvalidRule("permission cannot be empty".to_string()).into());
+            }
+            Some(raw) => {
+                serde_json::from_str::<serde_json::Value>(raw).map_err(|err| {
+                    Error::InvalidRule(format!(
+                        "permission must be valid JSON SandboxPolicy: {err}"
+                    ))
+                })?;
+                Some(PrefixRulePermission {
+                    sandbox_policy: raw.to_string(),
+                })
+            }
             None => None,
         };
 
@@ -256,6 +275,7 @@ fn policy_builtins(builder: &mut GlobalsBuilder) {
                     },
                     decision,
                     justification: justification.clone(),
+                    permission: permission.clone(),
                 }) as RuleRef
             })
             .collect();

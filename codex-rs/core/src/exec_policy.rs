@@ -15,9 +15,12 @@ use codex_execpolicy::Error as ExecPolicyRuleError;
 use codex_execpolicy::Evaluation;
 use codex_execpolicy::Policy;
 use codex_execpolicy::PolicyParser;
+use codex_execpolicy::PrefixRulePermission as ExecPrefixRulePermission;
 use codex_execpolicy::RuleMatch;
 use codex_execpolicy::blocking_append_allow_prefix_rule;
 use codex_protocol::approvals::ExecPolicyAmendment;
+use codex_protocol::approvals::ExecPolicyRulePermission;
+use codex_protocol::models::PrefixRule;
 use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::SandboxPolicy;
 use thiserror::Error;
@@ -136,7 +139,7 @@ pub(crate) struct ExecApprovalRequest<'a> {
     pub(crate) approval_policy: AskForApproval,
     pub(crate) sandbox_policy: &'a SandboxPolicy,
     pub(crate) sandbox_permissions: SandboxPermissions,
-    pub(crate) prefix_rule: Option<Vec<String>>,
+    pub(crate) prefix_rule: Option<PrefixRule>,
 }
 
 impl ExecPolicyManager {
@@ -236,10 +239,27 @@ impl ExecPolicyManager {
     ) -> Result<(), ExecPolicyUpdateError> {
         let policy_path = default_policy_path(codex_home);
         let prefix = amendment.command.clone();
+        let permission_sandbox_policy = amendment
+            .permission
+            .as_ref()
+            .map(|permission| serde_json::to_string(&permission.sandbox_policy))
+            .transpose()
+            .map_err(|source| ExecPolicyUpdateError::AddRule {
+                source: ExecPolicyRuleError::InvalidRule(format!(
+                    "failed to serialize amendment permission sandbox policy: {source}"
+                )),
+            })?;
         spawn_blocking({
             let policy_path = policy_path.clone();
             let prefix = prefix.clone();
-            move || blocking_append_allow_prefix_rule(&policy_path, &prefix)
+            let permission_sandbox_policy = permission_sandbox_policy.clone();
+            move || {
+                blocking_append_allow_prefix_rule(
+                    &policy_path,
+                    &prefix,
+                    permission_sandbox_policy.as_deref(),
+                )
+            }
         })
         .await
         .map_err(|source| ExecPolicyUpdateError::JoinBlockingTask { source })?
@@ -249,7 +269,9 @@ impl ExecPolicyManager {
         })?;
 
         let mut updated_policy = self.current().as_ref().clone();
-        updated_policy.add_prefix_rule(&prefix, Decision::Allow)?;
+        let permission = permission_sandbox_policy
+            .map(|sandbox_policy| ExecPrefixRulePermission { sandbox_policy });
+        updated_policy.add_prefix_rule(&prefix, Decision::Allow, permission)?;
         self.policy.store(Arc::new(updated_policy));
         Ok(())
     }
@@ -539,16 +561,17 @@ fn try_derive_execpolicy_amendment_for_allow_rules(
 }
 
 fn derive_requested_execpolicy_amendment_from_prefix_rule(
-    prefix_rule: Option<&Vec<String>>,
+    prefix_rule: Option<&PrefixRule>,
     matched_rules: &[RuleMatch],
 ) -> Option<ExecPolicyAmendment> {
     let prefix_rule = prefix_rule?;
-    if prefix_rule.is_empty() {
+    let command = prefix_rule.command();
+    if command.is_empty() {
         return None;
     }
     if BANNED_PREFIX_SUGGESTIONS.iter().any(|banned| {
-        prefix_rule.len() == banned.len()
-            && prefix_rule
+        command.len() == banned.len()
+            && command
                 .iter()
                 .map(String::as_str)
                 .eq(banned.iter().copied())
@@ -561,7 +584,16 @@ fn derive_requested_execpolicy_amendment_from_prefix_rule(
         return None;
     }
 
-    Some(ExecPolicyAmendment::new(prefix_rule.clone()))
+    let permission = prefix_rule
+        .permission()
+        .map(|permission| ExecPolicyRulePermission {
+            sandbox_policy: permission.sandbox_policy.clone(),
+        });
+
+    Some(ExecPolicyAmendment {
+        command: command.to_vec(),
+        permission,
+    })
 }
 
 /// Only return a reason when a policy rule drove the prompt decision.
@@ -818,6 +850,7 @@ mod tests {
                     matched_prefix: vec!["rm".to_string()],
                     decision: Decision::Forbidden,
                     justification: None,
+                    permission: None,
                 }],
             },
             policy.check_multiple(command.iter(), &|_| Decision::Allow)
@@ -940,6 +973,7 @@ mod tests {
                     matched_prefix: vec!["rm".to_string()],
                     decision: Decision::Forbidden,
                     justification: None,
+                    permission: None,
                 }],
             },
             policy.check_multiple([vec!["rm".to_string()]].iter(), &|_| Decision::Allow)
@@ -951,6 +985,7 @@ mod tests {
                     matched_prefix: vec!["ls".to_string()],
                     decision: Decision::Prompt,
                     justification: None,
+                    permission: None,
                 }],
             },
             policy.check_multiple([vec!["ls".to_string()]].iter(), &|_| Decision::Allow)
@@ -1087,7 +1122,7 @@ prefix_rule(pattern=["rm"], decision="forbidden")
                 approval_policy: AskForApproval::UnlessTrusted,
                 sandbox_policy: &SandboxPolicy::new_read_only_policy(),
                 sandbox_permissions: SandboxPermissions::UseDefault,
-                prefix_rule: Some(requested_prefix.clone()),
+                prefix_rule: Some(PrefixRule::from(requested_prefix.clone())),
             })
             .await;
 
@@ -1288,7 +1323,10 @@ prefix_rule(
                 approval_policy: AskForApproval::OnRequest,
                 sandbox_policy: &SandboxPolicy::new_read_only_policy(),
                 sandbox_permissions: SandboxPermissions::RequireEscalated,
-                prefix_rule: Some(vec!["cargo".to_string(), "install".to_string()]),
+                prefix_rule: Some(PrefixRule::from(vec![
+                    "cargo".to_string(),
+                    "install".to_string(),
+                ])),
             })
             .await;
 
@@ -1572,7 +1610,10 @@ prefix_rule(
     fn derive_requested_execpolicy_amendment_returns_none_for_empty_prefix_rule() {
         assert_eq!(
             None,
-            derive_requested_execpolicy_amendment_from_prefix_rule(Some(&Vec::new()), &[])
+            derive_requested_execpolicy_amendment_from_prefix_rule(
+                Some(&PrefixRule::from(Vec::new())),
+                &[],
+            )
         );
     }
 
@@ -1581,7 +1622,10 @@ prefix_rule(
         assert_eq!(
             None,
             derive_requested_execpolicy_amendment_from_prefix_rule(
-                Some(&vec!["python".to_string(), "-c".to_string()]),
+                Some(&PrefixRule::from(vec![
+                    "python".to_string(),
+                    "-c".to_string()
+                ])),
                 &[],
             )
         );
@@ -1599,7 +1643,10 @@ prefix_rule(
         ] {
             assert_eq!(
                 None,
-                derive_requested_execpolicy_amendment_from_prefix_rule(Some(&prefix_rule), &[])
+                derive_requested_execpolicy_amendment_from_prefix_rule(
+                    Some(&PrefixRule::from(prefix_rule)),
+                    &[],
+                )
             );
         }
     }
@@ -1625,7 +1672,10 @@ prefix_rule(
         ] {
             assert_eq!(
                 None,
-                derive_requested_execpolicy_amendment_from_prefix_rule(Some(&prefix_rule), &[])
+                derive_requested_execpolicy_amendment_from_prefix_rule(
+                    Some(&PrefixRule::from(prefix_rule)),
+                    &[],
+                )
             );
         }
     }
@@ -1640,7 +1690,10 @@ prefix_rule(
 
         assert_eq!(
             Some(ExecPolicyAmendment::new(prefix_rule.clone())),
-            derive_requested_execpolicy_amendment_from_prefix_rule(Some(&prefix_rule), &[])
+            derive_requested_execpolicy_amendment_from_prefix_rule(
+                Some(&PrefixRule::from(prefix_rule)),
+                &[],
+            )
         );
     }
 
@@ -1652,11 +1705,12 @@ prefix_rule(
             matched_prefix: vec!["cargo".to_string()],
             decision: Decision::Prompt,
             justification: None,
+            permission: None,
         }];
         assert_eq!(
             None,
             derive_requested_execpolicy_amendment_from_prefix_rule(
-                Some(&prefix_rule),
+                Some(&PrefixRule::from(prefix_rule.clone())),
                 &matched_rules_prompt
             ),
             "should return none when prompt policy matches"
@@ -1665,11 +1719,12 @@ prefix_rule(
             matched_prefix: vec!["cargo".to_string()],
             decision: Decision::Allow,
             justification: None,
+            permission: None,
         }];
         assert_eq!(
             None,
             derive_requested_execpolicy_amendment_from_prefix_rule(
-                Some(&prefix_rule),
+                Some(&PrefixRule::from(prefix_rule.clone())),
                 &matched_rules_allow
             ),
             "should return none when prompt policy matches"
@@ -1678,11 +1733,12 @@ prefix_rule(
             matched_prefix: vec!["cargo".to_string()],
             decision: Decision::Forbidden,
             justification: None,
+            permission: None,
         }];
         assert_eq!(
             None,
             derive_requested_execpolicy_amendment_from_prefix_rule(
-                Some(&prefix_rule),
+                Some(&PrefixRule::from(prefix_rule)),
                 &matched_rules_forbidden
             ),
             "should return none when prompt policy matches"

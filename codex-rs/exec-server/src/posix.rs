@@ -285,6 +285,7 @@ mod tests {
                     "--flag".to_string(),
                 ],
                 Decision::Allow,
+                None,
             )
             .expect("policy rule should be added");
         let file = Path::new("/usr/local/bin/custom-cmd");

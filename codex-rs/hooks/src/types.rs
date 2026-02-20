@@ -5,6 +5,7 @@ use chrono::DateTime;
 use chrono::SecondsFormat;
 use chrono::Utc;
 use codex_protocol::ThreadId;
+use codex_protocol::models::PrefixRule;
 use codex_protocol::models::SandboxPermissions;
 use futures::future::BoxFuture;
 use serde::Serialize;
@@ -95,7 +96,7 @@ pub struct HookToolInputLocalShell {
     pub workdir: Option<String>,
     pub timeout_ms: Option<u64>,
     pub sandbox_permissions: Option<SandboxPermissions>,
-    pub prefix_rule: Option<Vec<String>>,
+    pub prefix_rule: Option<PrefixRule>,
     pub justification: Option<String>,
 }
 

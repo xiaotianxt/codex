@@ -1321,6 +1321,7 @@ prefix_rules = [
                     }],
                     decision: Some(RequirementsExecPolicyDecisionToml::Forbidden),
                     justification: None,
+                    permission: None,
                 }],
             }
         );
@@ -1350,6 +1351,7 @@ prefix_rules = [
                         }],
                         decision: Some(RequirementsExecPolicyDecisionToml::Forbidden),
                         justification: None,
+                        permission: None,
                     },
                     RequirementsExecPolicyPrefixRuleToml {
                         pattern: vec![
@@ -1364,6 +1366,7 @@ prefix_rules = [
                         ],
                         decision: Some(RequirementsExecPolicyDecisionToml::Prompt),
                         justification: Some("review changes before push or commit".to_string()),
+                        permission: None,
                     },
                 ],
             }
@@ -1391,6 +1394,7 @@ prefix_rules = [
                     matched_prefix: tokens(&["rm"]),
                     decision: Decision::Forbidden,
                     justification: None,
+                    permission: None,
                 }],
             }
         );
@@ -1416,6 +1420,7 @@ prefix_rules = [
                     matched_prefix: tokens(&["git", "status"]),
                     decision: Decision::Prompt,
                     justification: None,
+                    permission: None,
                 }],
             }
         );
@@ -1427,6 +1432,7 @@ prefix_rules = [
                     matched_prefix: tokens(&["hg", "status"]),
                     decision: Decision::Prompt,
                     justification: None,
+                    permission: None,
                 }],
             }
         );
@@ -1510,6 +1516,7 @@ prefix_rules = []
                     matched_prefix: vec!["rm".to_string()],
                     decision: Decision::Forbidden,
                     justification: None,
+                    permission: None,
                 }],
             }
         );
@@ -1548,6 +1555,7 @@ prefix_rules = []
                     matched_prefix: vec!["rm".to_string()],
                     decision: Decision::Forbidden,
                     justification: None,
+                    permission: None,
                 }],
             }
         );
@@ -1562,6 +1570,7 @@ prefix_rules = []
                     matched_prefix: vec!["git".to_string(), "push".to_string()],
                     decision: Decision::Prompt,
                     justification: None,
+                    permission: None,
                 }],
             }
         );
