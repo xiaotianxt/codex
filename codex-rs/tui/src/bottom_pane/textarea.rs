@@ -5,6 +5,8 @@ use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
 use crossterm::event::KeyModifiers;
+use icu_segmenter::WordSegmenter;
+use icu_segmenter::options::WordBreakInvariantOptions;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -18,10 +20,26 @@ use textwrap::Options;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-const WORD_SEPARATORS: &str = "`~!@#$%^&*()-=+[{]}\\|;:'\",.<>/?";
+fn word_segmenter() -> icu_segmenter::WordSegmenterBorrowed<'static> {
+    WordSegmenter::new_auto(WordBreakInvariantOptions::default())
+}
 
-fn is_word_separator(ch: char) -> bool {
-    WORD_SEPARATORS.contains(ch)
+fn word_segment_boundaries(text: &str) -> Vec<usize> {
+    word_segmenter().segment_str(text).collect()
+}
+
+fn word_segment_start(boundaries: &[usize], pos: usize) -> usize {
+    let idx = boundaries.partition_point(|&boundary| boundary <= pos);
+    boundaries[idx.saturating_sub(1)]
+}
+
+fn word_segment_end(boundaries: &[usize], pos: usize) -> usize {
+    let idx = boundaries.partition_point(|&boundary| boundary <= pos);
+    boundaries
+        .get(idx)
+        .copied()
+        .or_else(|| boundaries.last().copied())
+        .unwrap_or(0)
 }
 
 #[derive(Debug, Clone)]
@@ -1171,22 +1189,21 @@ impl TextArea {
 
     pub(crate) fn beginning_of_previous_word(&self) -> usize {
         let prefix = &self.text[..self.cursor_pos];
-        let Some((first_non_ws_idx, ch)) = prefix
+        let Some((first_non_ws_idx, _)) = prefix
             .char_indices()
             .rev()
             .find(|&(_, ch)| !ch.is_whitespace())
         else {
             return 0;
         };
-        let is_separator = is_word_separator(ch);
-        let mut start = first_non_ws_idx;
-        for (idx, ch) in prefix[..first_non_ws_idx].char_indices().rev() {
-            if ch.is_whitespace() || is_word_separator(ch) != is_separator {
-                start = idx + ch.len_utf8();
-                break;
-            }
-            start = idx;
-        }
+        let run_start = prefix[..first_non_ws_idx]
+            .char_indices()
+            .rev()
+            .find(|&(_, ch)| ch.is_whitespace())
+            .map(|(idx, ch)| idx + ch.len_utf8())
+            .unwrap_or(0);
+        let boundaries = word_segment_boundaries(&prefix[run_start..]);
+        let start = run_start + word_segment_start(&boundaries, first_non_ws_idx - run_start);
         self.adjust_pos_out_of_elements(start, true)
     }
 
@@ -1196,18 +1213,19 @@ impl TextArea {
             return self.text.len();
         };
         let word_start = self.cursor_pos + first_non_ws;
-        let mut iter = self.text[word_start..].char_indices();
-        let Some((_, first_ch)) = iter.next() else {
-            return word_start;
-        };
-        let is_separator = is_word_separator(first_ch);
-        let mut end = self.text.len();
-        for (idx, ch) in iter {
-            if ch.is_whitespace() || is_word_separator(ch) != is_separator {
-                end = word_start + idx;
-                break;
-            }
-        }
+        let run_start = self.text[..word_start]
+            .char_indices()
+            .rev()
+            .find(|&(_, ch)| ch.is_whitespace())
+            .map(|(idx, ch)| idx + ch.len_utf8())
+            .unwrap_or(0);
+        let run_end = self.text[word_start..]
+            .char_indices()
+            .find(|&(_, ch)| ch.is_whitespace())
+            .map(|(idx, _)| word_start + idx)
+            .unwrap_or(self.text.len());
+        let boundaries = word_segment_boundaries(&self.text[run_start..run_end]);
+        let end = run_start + word_segment_end(&boundaries, word_start - run_start);
         self.adjust_pos_out_of_elements(end, false)
     }
 
@@ -1962,6 +1980,69 @@ mod tests {
         // If at end, end_of_next_word returns len
         t.set_cursor(t.text().len());
         assert_eq!(t.end_of_next_word(), t.text().len());
+    }
+
+    #[test]
+    fn word_navigation_follows_icu_segment_boundaries_for_cjk() {
+        let text = "你好世界";
+        let boundaries = word_segment_boundaries(text);
+        assert!(
+            boundaries.len() >= 3,
+            "expected at least one interior boundary"
+        );
+
+        let mut t = ta_with(text);
+        t.set_cursor(text.len());
+        assert_eq!(
+            t.beginning_of_previous_word(),
+            boundaries[boundaries.len() - 2]
+        );
+
+        t.set_cursor(0);
+        assert_eq!(t.end_of_next_word(), boundaries[1]);
+    }
+
+    #[test]
+    fn cjk_word_navigation_shortcuts_use_icu_segment_boundaries() {
+        let text = "你好世界";
+        let boundaries = word_segment_boundaries(text);
+        assert!(
+            boundaries.len() >= 3,
+            "expected at least one interior boundary"
+        );
+
+        let mut t = ta_with(text);
+        t.set_cursor(text.len());
+        t.input(KeyEvent::new(KeyCode::Left, KeyModifiers::ALT));
+        assert_eq!(t.cursor(), boundaries[boundaries.len() - 2]);
+
+        t.set_cursor(0);
+        t.input(KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL));
+        assert_eq!(t.cursor(), boundaries[1]);
+    }
+
+    #[test]
+    fn delete_word_shortcuts_delete_one_icu_segment_for_cjk() {
+        let text = "你好世界";
+        let boundaries = word_segment_boundaries(text);
+        assert!(
+            boundaries.len() >= 3,
+            "expected at least one interior boundary"
+        );
+
+        let mut t = ta_with(text);
+        t.set_cursor(text.len());
+        t.input(KeyEvent::new(KeyCode::Backspace, KeyModifiers::ALT));
+        assert_eq!(t.text(), &text[..boundaries[boundaries.len() - 2]]);
+        assert_eq!(t.cursor(), t.text().len());
+
+        t.set_cursor(0);
+        t.input(KeyEvent::new(KeyCode::Delete, KeyModifiers::ALT));
+        assert_eq!(
+            t.text(),
+            &text[boundaries[1]..boundaries[boundaries.len() - 2]]
+        );
+        assert_eq!(t.cursor(), 0);
     }
 
     #[test]

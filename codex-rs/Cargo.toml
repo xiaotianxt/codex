@@ -184,6 +184,7 @@ http = "1.3.1"
 icu_decimal = "2.1"
 icu_locale_core = "2.1"
 icu_provider = { version = "2.1", features = ["sync"] }
+icu_segmenter = "2.1"
 ignore = "0.4.23"
 image = { version = "^0.25.9", default-features = false }
 iana-time-zone = "0.1.64"
