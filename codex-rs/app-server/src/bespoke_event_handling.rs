@@ -371,6 +371,7 @@ pub(crate) async fn apply_bespoke_event_handling(
                 );
                 let empty = CoreRequestUserInputResponse {
                     answers: HashMap::new(),
+                    interrupted: false,
                 };
                 if let Err(err) = conversation
                     .submit(Op::UserInputAnswer {
@@ -1621,6 +1622,7 @@ async fn on_request_user_input_response(
             error!("request failed with client error: {err:?}");
             let empty = CoreRequestUserInputResponse {
                 answers: HashMap::new(),
+                interrupted: false,
             };
             if let Err(err) = conversation
                 .submit(Op::UserInputAnswer {
@@ -1637,6 +1639,7 @@ async fn on_request_user_input_response(
             error!("request failed: {err:?}");
             let empty = CoreRequestUserInputResponse {
                 answers: HashMap::new(),
+                interrupted: false,
             };
             if let Err(err) = conversation
                 .submit(Op::UserInputAnswer {
@@ -1671,6 +1674,7 @@ async fn on_request_user_input_response(
                 )
             })
             .collect(),
+        interrupted: false,
     };
 
     if let Err(err) = conversation
